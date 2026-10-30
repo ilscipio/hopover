@@ -7,7 +7,7 @@ namespace Hopover.App
     static class Branding
     {
         // TODO(Paul): the Stripe Payment Link for the coffee.
-        public const string CoffeeUrl = "[COFFEE-URL]";
+        public const string CoffeeUrl = "https://buy.stripe.com/28E4gz8pMasZgLv1Snbsc00";
         // TODO(Paul): the AlternativeTo page of Hopover, where the review goes.
         public const string ReviewUrl = "[REVIEW-URL]";
         // TODO(Paul): the public source repository.
