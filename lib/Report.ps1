@@ -33,6 +33,9 @@ function Write-Checklist([string]$Store, $Manifest, [hashtable]$Notes) {
     $L.Add('- [ ] Claude Code: run `claude` and sign in. The `.claude` folder and `.claude.json` are copied.')
     $L.Add('- [ ] GitHub CLI: `gh auth login`. Git Credential Manager asks again on the first push.')
     $L.Add('- [ ] Windows Hello (face/PIN/fingerprint): set it up in Settings > Accounts.')
+    $L.Add('- [ ] Sign out and in once: the taskbar, Explorer and theme settings apply at sign-in.')
+    $L.Add('- [ ] Default apps (browser, PDF, mail): Windows protects them; set them in Settings > Apps > Default apps.')
+    $L.Add('- [ ] Display scale and monitor layout: set them in Settings > System > Display (they belong to the hardware).')
     $L.Add('')
     $L.Add('## Saved logins in Windows Credential Manager (secrets cannot be exported)')
     if ($s.Credentials) { foreach ($c in $s.Credentials | Sort-Object -Unique) { $L.Add("- [ ] $c") } } else { $L.Add('- none') }

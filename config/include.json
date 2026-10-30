@@ -10,7 +10,9 @@
     "Notepad++", "FileZilla", "WinSCP.ini", "GitHub Desktop", "Postman", "Zed", "DBeaverData",
     "Microsoft\\Signatures", "Microsoft\\Templates", "Microsoft\\UProof", "Microsoft\\Sticky Notes",
     "Microsoft\\Windows\\Start Menu\\Programs", "Microsoft\\Windows\\PowerShell\\PSReadLine",
-    "Microsoft\\Windows\\Themes", "Thunderbird", "Mozilla\\Firefox"
+    "Microsoft\\Windows\\Themes", "Thunderbird", "Mozilla\\Firefox",
+    "Microsoft\\Windows\\Recent\\AutomaticDestinations\\f01b4d95cf55d32a.automaticDestinations-ms",
+    "Microsoft\\Internet Explorer\\Quick Launch\\User Pinned"
   ],
 
   "appDataLocal": [
@@ -31,17 +33,45 @@
   ],
   "excludeFiles": ["hiberfil.sys", "pagefile.sys", "swapfile.sys", "~$*", "java_error_in_*.hprof"],
 
+  "_registry": "Windows settings (HKCU) that are safe on another PC. No DPI, monitor or hardware keys.",
   "registry": [
-    "HKCU\\Software\\SimonTatham\\PuTTY",
     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\CabinetState",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Accent",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Taskband",
     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Search",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\SearchSettings",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Notifications\\Settings",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\PushNotifications",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+    "HKCU\\Software\\Microsoft\\Windows\\DWM",
+    "HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Fonts",
+    "HKCU\\Software\\Microsoft\\Input\\Settings",
+    "HKCU\\Software\\Microsoft\\Clipboard",
+    "HKCU\\Software\\Microsoft\\Terminal Server Client",
+    "HKCU\\Software\\Microsoft\\Notepad",
     "HKCU\\Control Panel\\International",
     "HKCU\\Control Panel\\Mouse",
+    "HKCU\\Control Panel\\Keyboard",
+    "HKCU\\Control Panel\\Cursors",
+    "HKCU\\Control Panel\\Colors",
+    "HKCU\\Control Panel\\Accessibility",
     "HKCU\\Console",
     "HKCU\\Keyboard Layout\\Preload",
-    "HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Fonts"
+    "HKCU\\Keyboard Layout\\Substitutes"
   ],
+
+  "_registryValues": "Single values from keys that also hold PC-specific data (DPI, monitors).",
+  "registryValues": {
+    "HKCU\\Control Panel\\Desktop": ["Wallpaper", "WallpaperStyle", "TileWallpaper", "MenuShowDelay", "CursorBlinkRate", "DragFullWindows", "FontSmoothing", "FontSmoothingType"]
+  },
+
+  "_registryVendors": "Every app vendor key under HKCU\\Software moves (app settings live there), except these.",
+  "registryVendorsExclude": ["Microsoft", "Classes", "Policies", "Wow6432Node", "WOW6432Node", "AppDataLow", "Clients", "RegisteredApplications", "Intel", "NVIDIA Corporation", "AMD", "ATI", "Realtek", "Synaptics", "Elantech", "Dolby", "Waves", "Chromium", "Google", "Mozilla", "Microsoft Corporation", "Windows", "Hewlett-Packard", "Dell", "Lenovo", "ASUS", "Logitech"],
+
+  "chunkDepth": { "c-root": 2, "drive": 2, "profile": 1 },
 
   "priorityApps": ["AgileBits.1Password", "DominikReichl.KeePass", "Microsoft.OneDrive", "Seafile.Seadrive", "Git.Git", "Microsoft.PowerShell", "Microsoft.WindowsTerminal"],
 

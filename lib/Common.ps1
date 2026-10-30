@@ -22,7 +22,9 @@ function Read-Json([string]$Path) {
     if (-not (Test-Path $Path)) { return $null }
     $text = Get-Content -Path $Path -Raw -Encoding UTF8
     if (-not $text -or -not $text.Trim()) { return $null }
-    $text | ConvertFrom-Json
+    # PS 5.1 returns a JSON array as ONE object; unroll it so @(Read-Json x) is the items.
+    $r = $text | ConvertFrom-Json
+    if ($r -is [array]) { foreach ($i in $r) { $i } } else { $r }
 }
 
 function Write-Json($Object, [string]$Path) {

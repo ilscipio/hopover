@@ -30,7 +30,13 @@ function Import-Apps([string]$Store, $Config, [switch]$WhatIf) {
     }
     if ($WhatIf) { Write-Note "would run: winget import -i $json --ignore-unavailable"; return }
     Write-Note 'Sign in to 1Password and OneDrive now. The other apps install in the meantime.' 'Green'
-    winget import -i $json --ignore-unavailable --ignore-versions @($flags[0..1])
+    # Line by line into the log: the progress bars of winget would fill the memory of a runspace.
+    winget import -i $json --ignore-unavailable --ignore-versions @($flags[0..1]) 2>&1 | ForEach-Object {
+        $l = "$_".Trim()
+        # Drop spinner and progress-bar lines (block characters U+2580-U+259F). ASCII only in
+        # this file: PowerShell 5.1 reads a file without BOM as ANSI.
+        if ($l -and $l -notmatch '^[\s\-\\|/]+$|^\d+\s*%$|[▀-▟]') { Write-Note $l }
+    }
 }
 
 # ---------- environment variables ----------
@@ -78,8 +84,35 @@ function Export-Settings([string]$Store, $Config) {
     $i = 0
     foreach ($k in $Config.registry) {
         $i++
-        reg export $k (Join-Path "$dir\reg" ('{0:D2}.reg' -f $i)) /y 2>$null | Out-Null
+        reg export $k (Join-Path "$dir\reg" ('win-{0:D2}.reg' -f $i)) /y 2>$null | Out-Null
     }
+    # App settings: every vendor key under HKCU\Software, except Windows, drivers and browsers.
+    $vendors = @(Get-ChildItem 'HKCU:\Software' -ErrorAction SilentlyContinue |
+        Where-Object { -not (Test-NameExcluded $_.PSChildName @($Config.registryVendorsExclude)) })
+    $n = 0
+    foreach ($v in $vendors) {
+        # The index keeps "Foo Bar" and "Foo_Bar" apart.
+        $n++
+        $file = ('app-{0:D3}-' -f $n) + ($v.PSChildName -replace '[^\w.\-]', '_') + '.reg'
+        reg export "HKCU\Software\$($v.PSChildName)" (Join-Path "$dir\reg" $file) /y 2>$null | Out-Null
+    }
+    # Single values from keys that also hold PC-specific data (DPI, monitors).
+    $values = [ordered]@{}
+    foreach ($p in $Config.registryValues.PSObject.Properties) {
+        $item = Get-ItemProperty ('Registry::' + $p.Name) -ErrorAction SilentlyContinue
+        if (-not $item) { continue }
+        $values[$p.Name] = [ordered]@{}
+        foreach ($n in $p.Value) { if ($null -ne $item.$n) { $values[$p.Name][$n] = "$($item.$n)" } }
+    }
+    $win = [pscustomobject]@{
+        Values    = [pscustomobject]$values
+        Languages = @(Get-WinUserLanguageList | ForEach-Object { $_.LanguageTag })
+        TimeZone  = (Get-TimeZone).Id
+        Power     = $(((powercfg /getactivescheme) -join ' ') -replace '.*?([0-9a-f]{8}-[0-9a-f-]{27}).*', '$1')
+    }
+    if ($win.Power -match '^[0-9a-f-]{36}$') { powercfg /export "$dir\power.pow" $win.Power | Out-Null }
+    Write-Json $win "$dir\windows.json"
+    Write-Note "app registry keys: $($vendors.Count) ($(($vendors.PSChildName) -join ', '))"
     netsh wlan export profile key=clear folder="$dir\wifi" 2>$null | Out-Null
     $drives = Get-ChildItem HKCU:\Network -ErrorAction SilentlyContinue | ForEach-Object {
         [pscustomobject]@{ Letter = $_.PSChildName; Remote = (Get-ItemProperty $_.PSPath).RemotePath }
@@ -121,6 +154,45 @@ function Import-Settings([string]$Store, [string]$OldProfile, [switch]$WhatIf) {
         Write-Note "printer $($p.Name)"
         if (-not $WhatIf) { Add-Printer -ConnectionName $p.Name -ErrorAction SilentlyContinue }
     }
+    Import-WindowsSettings $dir $OldProfile -WhatIf:$WhatIf
+}
+
+function Import-WindowsSettings([string]$Dir, [string]$OldProfile, [switch]$WhatIf) {
+    $w = Read-Json "$Dir\windows.json"
+    if (-not $w) { return }
+    foreach ($k in $w.Values.PSObject.Properties) {
+        foreach ($v in $k.Value.PSObject.Properties) {
+            $val = $v.Value -replace [regex]::Escape($OldProfile), $env:USERPROFILE.Replace('$', '$$')
+            Write-Note "$($k.Name)\$($v.Name)"
+            if (-not $WhatIf) { Set-ItemProperty -Path ('Registry::' + $k.Name) -Name $v.Name -Value $val -ErrorAction SilentlyContinue }
+        }
+    }
+    if ($w.Languages) {
+        Write-Note "languages: $($w.Languages -join ', ')"
+        if (-not $WhatIf) {
+            # Add the missing languages to the list this PC has: a new list would drop the
+            # keyboard layouts set up here.
+            $list = Get-WinUserLanguageList
+            $have = @($list | ForEach-Object { $_.LanguageTag })
+            $missing = @($w.Languages | Where-Object { $have -notcontains $_ })
+            foreach ($l in $missing) { $list.Add($l) }
+            if ($missing) { Set-WinUserLanguageList $list -Force -ErrorAction SilentlyContinue }
+        }
+    }
+    if ($w.TimeZone -and (Get-TimeZone).Id -ne $w.TimeZone) {
+        Write-Note "time zone: $($w.TimeZone)"
+        if (-not $WhatIf) { Set-TimeZone -Id $w.TimeZone -ErrorAction SilentlyContinue }
+    }
+    if (Test-Path "$Dir\power.pow") {
+        Write-Note 'power plan'
+        if (-not $WhatIf) {
+            # /import gives the plan a new GUID; read it back and make it active.
+            $out = (powercfg /import "$Dir\power.pow") -join ' '
+            if ($out -match '([0-9a-f]{8}-[0-9a-f-]{27})') { powercfg /setactive $Matches[1] | Out-Null }
+        }
+    }
+    # Wallpaper, mouse and keyboard values apply now; Explorer, taskbar and theme at the next sign-in.
+    if (-not $WhatIf) { rundll32.exe user32.dll, UpdatePerUserSystemParameters 1, True }
 }
 
 # ---------- certificates ----------

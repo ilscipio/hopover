@@ -1,0 +1,518 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Hopover" Width="1180" Height="800" MinWidth="980" MinHeight="680"
+        WindowStartupLocation="CenterScreen" Background="{StaticResource Bg}" FontFamily="{StaticResource Body}"
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Ideal">
+  <Grid x:Name="Root">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="52"/>
+      <RowDefinition Height="*"/>
+    </Grid.RowDefinitions>
+    <Border Grid.RowSpan="2" Background="{StaticResource Glow}" IsHitTestVisible="False"/>
+
+    <!-- Title bar -->
+    <Grid Margin="20,0,8,0">
+      <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+        <Image Source="{StaticResource Logo}" Width="20" Height="20"/>
+        <TextBlock Text="Hopover" FontFamily="{StaticResource Display}" FontSize="14" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center"/>
+        <TextBlock x:Name="Crumb" Foreground="{StaticResource TextFaint}" FontSize="13" Margin="12,0,0,0" VerticalAlignment="Center"/>
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+        <Button x:Name="BtnMin" Style="{StaticResource Caption}" Content="&#xE921;"/>
+        <Button x:Name="BtnMax" Style="{StaticResource Caption}" Content="&#xE922;"/>
+        <Button x:Name="BtnClose" Style="{StaticResource CaptionClose}" Content="&#xE8BB;"/>
+      </StackPanel>
+    </Grid>
+
+    <Grid Grid.Row="1" Margin="44,6,44,36">
+
+      <!-- ============ Start ============ -->
+      <Grid x:Name="PageWelcome">
+        <Grid.RenderTransform><TranslateTransform/></Grid.RenderTransform>
+        <StackPanel MaxWidth="960" VerticalAlignment="Center">
+          <Border Style="{StaticResource Pill}" Background="{StaticResource AccentSoft}">
+            <TextBlock Text="PC MIGRATION OVER YOUR NETWORK" Style="{StaticResource Eyebrow}" Foreground="{StaticResource Accent}"/>
+          </Border>
+          <TextBlock Margin="0,18,0,0" FontFamily="{StaticResource Display}" FontSize="50" FontWeight="SemiBold" LineHeight="58">
+            <Run Text="Move to your new PC."/><LineBreak/><Run Text="All of it." Foreground="{StaticResource AccentGradientH}"/>
+          </TextBlock>
+          <TextBlock Style="{StaticResource Dim}" FontSize="16" LineHeight="25" MaxWidth="640" HorizontalAlignment="Left" Margin="0,16,0,0"
+                     Text="Apps, files, SSH keys, WSL, Windows and app settings, scheduled tasks. Both PCs stay on in the same network. The old PC only shares: nothing on it changes."/>
+
+          <UniformGrid Columns="2" Margin="-8,36,-8,0">
+            <Button x:Name="BtnOld" Style="{StaticResource ChoiceCard}" Margin="8">
+              <StackPanel>
+                <Border Width="52" Height="52" CornerRadius="14" Background="{StaticResource AccentGradient}" HorizontalAlignment="Left">
+                  <TextBlock Text="&#xE898;" Style="{StaticResource Glyph}" FontSize="22" Foreground="White"/>
+                </Border>
+                <TextBlock Text="This is the old PC" Style="{StaticResource H2}" FontSize="22" Margin="0,22,0,6"/>
+                <TextBlock Style="{StaticResource Dim}" Text="Scan it, choose what moves, and share it read-only with the new PC."/>
+                <StackPanel Orientation="Horizontal" Margin="0,22,0,0">
+                  <TextBlock Text="Scan and share" Foreground="{StaticResource Accent}" FontWeight="SemiBold"/>
+                  <TextBlock Text="&#xE72A;" Style="{StaticResource Glyph}" Foreground="{StaticResource Accent}" FontSize="12" Margin="8,1,0,0"/>
+                </StackPanel>
+              </StackPanel>
+            </Button>
+            <Button x:Name="BtnNew" Style="{StaticResource ChoiceCard}" Margin="8">
+              <StackPanel>
+                <Border Width="52" Height="52" CornerRadius="14" Background="{StaticResource AccentGradient}" HorizontalAlignment="Left">
+                  <TextBlock Text="&#xE896;" Style="{StaticResource Glyph}" FontSize="22" Foreground="White"/>
+                </Border>
+                <TextBlock Text="This is the new PC" Style="{StaticResource H2}" FontSize="22" Margin="0,22,0,6"/>
+                <TextBlock Style="{StaticResource Dim}" Text="Connect to the old PC and bring everything over. You can use this PC while it works."/>
+                <StackPanel Orientation="Horizontal" Margin="0,22,0,0">
+                  <TextBlock Text="Connect and move" Foreground="{StaticResource Accent}" FontWeight="SemiBold"/>
+                  <TextBlock Text="&#xE72A;" Style="{StaticResource Glyph}" Foreground="{StaticResource Accent}" FontSize="12" Margin="8,1,0,0"/>
+                </StackPanel>
+              </StackPanel>
+            </Button>
+          </UniformGrid>
+
+          <Border x:Name="ResumeBanner" Visibility="Collapsed" Background="{StaticResource WarnSoft}" CornerRadius="12" Padding="16,12" Margin="0,20,0,0">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="&#xE7BA;" Style="{StaticResource Glyph}" Foreground="{StaticResource Warn}" FontSize="16"/>
+              <TextBlock Margin="12,0,0,0" Foreground="{StaticResource Warn}" TextWrapping="Wrap" VerticalAlignment="Center"
+                         Text="A move on this PC did not finish. Choose 'This is the new PC': done steps are skipped and the copy goes on where it stopped."/>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </Grid>
+
+      <!-- ============ Old PC: scan and choose ============ -->
+      <Grid x:Name="PageScan" Visibility="Collapsed">
+        <Grid.RenderTransform><TranslateTransform/></Grid.RenderTransform>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="24"/>
+          <ColumnDefinition Width="360"/>
+        </Grid.ColumnDefinitions>
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+          </Grid.RowDefinitions>
+          <StackPanel Margin="0,0,0,18">
+            <TextBlock Text="OLD PC  ·  STEP 1 OF 2" Style="{StaticResource Eyebrow}"/>
+            <TextBlock Text="What moves" Style="{StaticResource H1}" Margin="0,6,0,6"/>
+            <TextBlock x:Name="ScanSub" Style="{StaticResource Dim}" Text="Hopover measures every folder first. On a big disk this takes some minutes; the PC stays usable."/>
+            <ProgressBar x:Name="ScanBar" Margin="0,16,0,8" Height="6"/>
+            <TextBlock x:Name="ScanText" Foreground="{StaticResource TextFaint}" FontSize="12.5" TextTrimming="CharacterEllipsis"/>
+          </StackPanel>
+          <Border Grid.Row="1" Style="{StaticResource Card}" Padding="8">
+            <Grid>
+              <ListBox x:Name="PlanList">
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <Grid x:Name="row">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="150"/>
+                        <ColumnDefinition Width="86"/>
+                      </Grid.ColumnDefinitions>
+                      <CheckBox IsChecked="{Binding Include, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center"/>
+                      <StackPanel Grid.Column="1" Margin="14,0,16,0">
+                        <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                          <Border Style="{StaticResource Pill}" Padding="7,1">
+                            <TextBlock Text="{Binding WhyText}" FontSize="11" Foreground="{StaticResource TextDim}"/>
+                          </Border>
+                          <TextBlock Text="{Binding Path}" FontSize="12" Foreground="{StaticResource TextFaint}" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                        </StackPanel>
+                      </StackPanel>
+                      <Border Grid.Column="2" Height="6" CornerRadius="3" Background="{StaticResource Surface3}" VerticalAlignment="Center">
+                        <Border CornerRadius="3" Background="{StaticResource AccentGradientH}" RenderTransformOrigin="0,0.5">
+                          <Border.RenderTransform>
+                            <ScaleTransform ScaleX="{Binding BarRatio}"/>
+                          </Border.RenderTransform>
+                        </Border>
+                      </Border>
+                      <TextBlock Grid.Column="3" Text="{Binding SizeText}" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="13.5" FontWeight="SemiBold"/>
+                    </Grid>
+                    <DataTemplate.Triggers>
+                      <DataTrigger Binding="{Binding Include}" Value="False">
+                        <Setter TargetName="row" Property="Opacity" Value="0.4"/>
+                      </DataTrigger>
+                    </DataTemplate.Triggers>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+              <StackPanel x:Name="ScanWait" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <ContentControl Style="{StaticResource Spinner}" Width="34" Height="34"/>
+                <TextBlock Text="Reading the folders" Foreground="{StaticResource TextDim}" Margin="0,14,0,0" HorizontalAlignment="Center"/>
+              </StackPanel>
+            </Grid>
+          </Border>
+        </Grid>
+
+        <StackPanel Grid.Column="2">
+          <Border Style="{StaticResource Card}">
+            <StackPanel>
+              <TextBlock Text="ALSO MOVE" Style="{StaticResource Eyebrow}" Margin="0,0,0,16"/>
+              <StackPanel x:Name="OldSteps"/>
+              <StackPanel x:Name="OldCertPanel" Visibility="Collapsed" Margin="0,6,0,0">
+                <TextBlock Text="Password for the certificates" Foreground="{StaticResource TextDim}" FontSize="12.5" Margin="0,0,0,6"/>
+                <PasswordBox x:Name="OldCertPw"/>
+                <TextBlock Text="You type it again on the new PC." Foreground="{StaticResource TextFaint}" FontSize="12" Margin="0,6,0,0"/>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource Card}" Margin="0,16,0,0">
+            <StackPanel>
+              <TextBlock Text="TOTAL" Style="{StaticResource Eyebrow}"/>
+              <TextBlock x:Name="TotalBig" Text="..." FontFamily="{StaticResource Display}" FontSize="40" FontWeight="SemiBold" Margin="0,6,0,0"/>
+              <TextBlock x:Name="TotalSub" Style="{StaticResource Dim}" FontSize="13"/>
+              <Button x:Name="BtnExport" Style="{StaticResource Primary}" Content="Prepare the move" Margin="0,22,0,0" IsEnabled="False"/>
+              <TextBlock Style="{StaticResource Dim}" FontSize="12" Foreground="{StaticResource TextFaint}" Margin="0,14,0,0"
+                         Text="OneDrive and SeaDrive folders sync by themselves after sign-in. 1Password lives in your account: you only sign in."/>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </Grid>
+
+      <!-- ============ Old PC: prepare and share ============ -->
+      <Grid x:Name="PageExport" Visibility="Collapsed">
+        <Grid.RenderTransform><TranslateTransform/></Grid.RenderTransform>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="300"/>
+          <ColumnDefinition Width="28"/>
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <StackPanel>
+          <TextBlock Text="OLD PC  ·  STEP 2 OF 2" Style="{StaticResource Eyebrow}"/>
+          <TextBlock x:Name="ExportTitle" Text="Preparing the move" Style="{StaticResource H1}" FontSize="28" Margin="0,6,0,24" TextWrapping="Wrap"/>
+          <ItemsControl x:Name="ExportSteps" ItemTemplate="{StaticResource StepTemplate}"/>
+        </StackPanel>
+        <Grid Grid.Column="2">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+          </Grid.RowDefinitions>
+          <Border x:Name="ExportWorking" Style="{StaticResource Card}">
+            <StackPanel Orientation="Horizontal">
+              <ContentControl Style="{StaticResource Spinner}" Width="30" Height="30"/>
+              <StackPanel Margin="18,0,0,0">
+                <TextBlock Text="Saving the app list, settings, tasks and WSL" Style="{StaticResource H2}" FontSize="17"/>
+                <TextBlock Style="{StaticResource Dim}" Margin="0,4,0,0" Text="WSL distros stop while they are saved. Then Hopover shares this PC read-only with your user."/>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+          <Border x:Name="ShareCard" Style="{StaticResource Card}" Visibility="Collapsed" BorderBrush="#4534D399">
+            <StackPanel>
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border Width="40" Height="40" CornerRadius="20" Background="{StaticResource Success}" VerticalAlignment="Top">
+                  <TextBlock Text="&#xE73E;" Style="{StaticResource Glyph}" Foreground="#0B0D12" FontSize="16"/>
+                </Border>
+                <StackPanel Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center">
+                  <TextBlock Text="Ready. Now go to the new PC." Style="{StaticResource H2}"/>
+                  <TextBlock x:Name="ShareWhere" Style="{StaticResource Dim}" Margin="0,3,0,0"/>
+                </StackPanel>
+              </Grid>
+              <Grid Margin="0,24,0,0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border Background="{StaticResource Surface2}" CornerRadius="12" Padding="16,12" Margin="0,0,8,0">
+                  <StackPanel>
+                    <TextBlock Text="PC NAME" Style="{StaticResource Eyebrow}"/>
+                    <DockPanel Margin="0,4,0,0">
+                      <Button x:Name="BtnCopyPc" DockPanel.Dock="Right" Style="{StaticResource Ghost}" ToolTip="Copy">
+                        <TextBlock Text="&#xE8C8;" FontFamily="{StaticResource Icons}" Foreground="{StaticResource TextDim}"/>
+                      </Button>
+                      <TextBlock x:Name="SharePc" FontFamily="{StaticResource Display}" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                    </DockPanel>
+                  </StackPanel>
+                </Border>
+                <Border Grid.Column="1" Background="{StaticResource Surface2}" CornerRadius="12" Padding="16,12" Margin="4,0">
+                  <StackPanel>
+                    <TextBlock Text="IP ADDRESS" Style="{StaticResource Eyebrow}"/>
+                    <DockPanel Margin="0,4,0,0">
+                      <Button x:Name="BtnCopyIp" DockPanel.Dock="Right" Style="{StaticResource Ghost}" ToolTip="Copy">
+                        <TextBlock Text="&#xE8C8;" FontFamily="{StaticResource Icons}" Foreground="{StaticResource TextDim}"/>
+                      </Button>
+                      <TextBlock x:Name="ShareIp" FontFamily="{StaticResource Display}" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                    </DockPanel>
+                  </StackPanel>
+                </Border>
+                <Border Grid.Column="2" Background="{StaticResource Surface2}" CornerRadius="12" Padding="16,12" Margin="8,0,0,0">
+                  <StackPanel>
+                    <TextBlock Text="USER" Style="{StaticResource Eyebrow}"/>
+                    <DockPanel Margin="0,4,0,0">
+                      <Button x:Name="BtnCopyUser" DockPanel.Dock="Right" Style="{StaticResource Ghost}" ToolTip="Copy">
+                        <TextBlock Text="&#xE8C8;" FontFamily="{StaticResource Icons}" Foreground="{StaticResource TextDim}"/>
+                      </Button>
+                      <TextBlock x:Name="ShareUser" FontFamily="{StaticResource Display}" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                    </DockPanel>
+                  </StackPanel>
+                </Border>
+              </Grid>
+              <TextBlock Style="{StaticResource Dim}" Margin="0,18,0,0" Text="Leave this PC on until the new PC says Done. The password is your Windows password here (with a Microsoft account: that password, not the PIN)."/>
+              <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
+                <Button x:Name="BtnStopShare" Content="Stop sharing (after the move)"/>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+          <Button x:Name="BtnExportLog" Grid.Row="1" Style="{StaticResource Ghost}" Content="Show details" HorizontalAlignment="Left" Margin="0,14,0,8"/>
+          <Border x:Name="ExportLogBorder" Grid.Row="2" Visibility="Collapsed" Background="{StaticResource Surface}" BorderBrush="{StaticResource Stroke}" BorderThickness="1" CornerRadius="12">
+            <TextBox x:Name="ExportLog" IsReadOnly="True" FontFamily="{StaticResource Mono}" FontSize="12" TextWrapping="NoWrap"
+                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Foreground="{StaticResource TextDim}"/>
+          </Border>
+        </Grid>
+      </Grid>
+
+      <!-- ============ New PC: connect ============ -->
+      <ScrollViewer x:Name="PageConnect" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+        <ScrollViewer.RenderTransform><TranslateTransform/></ScrollViewer.RenderTransform>
+        <StackPanel MaxWidth="780" HorizontalAlignment="Left" Width="780">
+          <TextBlock Text="NEW PC  ·  STEP 1 OF 2" Style="{StaticResource Eyebrow}"/>
+          <TextBlock Text="Connect to the old PC" Style="{StaticResource H1}" Margin="0,6,0,6"/>
+          <TextBlock Style="{StaticResource Dim}" Text="The old PC shows its name, IP address and user in green after 'Prepare the move'."/>
+          <Border Style="{StaticResource Card}" Margin="0,22,0,0">
+            <StackPanel>
+              <TextBlock Text="Old PC name or IP address" Foreground="{StaticResource TextDim}" FontSize="12.5" Margin="0,0,0,6"/>
+              <TextBox x:Name="FromBox"/>
+              <Grid Margin="0,16,0,0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="16"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                  <TextBlock Text="User on the old PC" Foreground="{StaticResource TextDim}" FontSize="12.5" Margin="0,0,0,6"/>
+                  <TextBox x:Name="UserBox"/>
+                </StackPanel>
+                <StackPanel Grid.Column="2">
+                  <TextBlock Text="Password" Foreground="{StaticResource TextDim}" FontSize="12.5" Margin="0,0,0,6"/>
+                  <PasswordBox x:Name="PwBox"/>
+                </StackPanel>
+              </Grid>
+              <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
+                <Button x:Name="BtnConnect" Style="{StaticResource Primary}" Content="Connect"/>
+                <ContentControl x:Name="ConnectSpin" Style="{StaticResource Spinner}" Margin="16,0,0,0" Visibility="Collapsed"/>
+                <TextBlock x:Name="ConnectText" VerticalAlignment="Center" Margin="14,0,0,0" TextWrapping="Wrap" MaxWidth="520"/>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <Border x:Name="ImportCard" Style="{StaticResource Card}" Margin="0,16,0,0" Visibility="Collapsed">
+            <StackPanel>
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border Width="46" Height="46" CornerRadius="13" Background="{StaticResource AccentGradient}" VerticalAlignment="Top">
+                  <TextBlock Text="&#xE977;" Style="{StaticResource Glyph}" FontSize="20" Foreground="White"/>
+                </Border>
+                <StackPanel Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center">
+                  <TextBlock x:Name="SummaryTitle" Style="{StaticResource H2}"/>
+                  <TextBlock x:Name="SummaryText" Style="{StaticResource Dim}" Margin="0,2,0,0"/>
+                </StackPanel>
+              </Grid>
+              <Rectangle Height="1" Fill="{StaticResource Stroke}" Margin="0,22"/>
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="36"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                  <TextBlock Text="WHAT MOVES" Style="{StaticResource Eyebrow}" Margin="0,0,0,14"/>
+                  <StackPanel x:Name="NewSteps"/>
+                </StackPanel>
+                <StackPanel Grid.Column="2">
+                  <TextBlock Text="SPEED" Style="{StaticResource Eyebrow}" Margin="0,0,0,10"/>
+                  <Border Background="{StaticResource Surface2}" CornerRadius="10" Padding="4">
+                    <UniformGrid Columns="3">
+                      <RadioButton x:Name="SpeedGentle" GroupName="speed" Style="{StaticResource Segment}" Content="Gentle"/>
+                      <RadioButton x:Name="SpeedBalanced" GroupName="speed" Style="{StaticResource Segment}" Content="Balanced" IsChecked="True"/>
+                      <RadioButton x:Name="SpeedFull" GroupName="speed" Style="{StaticResource Segment}" Content="Full speed"/>
+                    </UniformGrid>
+                  </Border>
+                  <TextBlock x:Name="SpeedHint" Style="{StaticResource Dim}" FontSize="12.5" Margin="2,10,0,0"/>
+                  <StackPanel x:Name="NewCertPanel" Visibility="Collapsed" Margin="0,20,0,0">
+                    <TextBlock Text="Certificate password from the old PC" Foreground="{StaticResource TextDim}" FontSize="12.5" Margin="0,0,0,6"/>
+                    <PasswordBox x:Name="NewCertPw"/>
+                  </StackPanel>
+                  <CheckBox x:Name="DrySwitch" Style="{StaticResource Switch}" Margin="0,22,0,0">
+                    <StackPanel>
+                      <TextBlock Text="Dry run"/>
+                      <TextBlock Text="Show what would happen; change nothing." Foreground="{StaticResource TextFaint}" FontSize="12"/>
+                    </StackPanel>
+                  </CheckBox>
+                </StackPanel>
+              </Grid>
+              <Button x:Name="BtnImport" Style="{StaticResource Primary}" Content="Start the move" HorizontalAlignment="Right" Margin="0,22,0,0"/>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+
+      <!-- ============ New PC: the move ============ -->
+      <Grid x:Name="PageImport" Visibility="Collapsed">
+        <Grid.RenderTransform><TranslateTransform/></Grid.RenderTransform>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="300"/>
+          <ColumnDefinition Width="28"/>
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel>
+            <TextBlock Text="NEW PC  ·  STEP 2 OF 2" Style="{StaticResource Eyebrow}"/>
+            <TextBlock x:Name="ImportTitle" Text="Moving to this PC" Style="{StaticResource H1}" FontSize="28" Margin="0,6,0,24" TextWrapping="Wrap"/>
+            <ItemsControl x:Name="ImportSteps" ItemTemplate="{StaticResource StepTemplate}"/>
+          </StackPanel>
+        </ScrollViewer>
+        <Grid Grid.Column="2">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+          </Grid.RowDefinitions>
+          <Border x:Name="HeroCard" Style="{StaticResource Card}" Padding="28">
+            <StackPanel>
+              <Grid>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
+                  <TextBlock x:Name="HeroPct" Text="0" FontFamily="{StaticResource Display}" FontSize="72" FontWeight="SemiBold" LineHeight="72" LineStackingStrategy="BlockLineHeight"/>
+                  <TextBlock Text="%" FontFamily="{StaticResource Display}" FontSize="30" Foreground="{StaticResource TextDim}" Margin="4,0,0,10" VerticalAlignment="Bottom"/>
+                </StackPanel>
+                <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                  <TextBlock x:Name="HeroBytes" Text="Waiting for the files step" Style="{StaticResource H2}" FontSize="18" HorizontalAlignment="Right"/>
+                  <TextBlock x:Name="HeroRate" Foreground="{StaticResource TextDim}" HorizontalAlignment="Right" Margin="0,4,0,0"/>
+                </StackPanel>
+              </Grid>
+              <ProgressBar x:Name="HeroBar" Height="10" Margin="0,20,0,12"/>
+              <TextBlock x:Name="HeroItem" Foreground="{StaticResource TextFaint}" FontSize="12.5" TextTrimming="CharacterEllipsis"
+                         Text="Apps install in the background while the files copy. Sign in to 1Password and OneDrive meanwhile."/>
+            </StackPanel>
+          </Border>
+
+          <Border x:Name="DoneCard" Style="{StaticResource Card}" Visibility="Collapsed" Padding="28">
+            <StackPanel>
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border x:Name="DoneBadge" Width="56" Height="56" CornerRadius="28" Background="{StaticResource AccentGradient}" VerticalAlignment="Top">
+                  <TextBlock x:Name="DoneGlyph" Text="&#xE73E;" Style="{StaticResource Glyph}" Foreground="White" FontSize="22"/>
+                </Border>
+                <StackPanel Grid.Column="1" Margin="18,0,0,0" VerticalAlignment="Center">
+                  <TextBlock x:Name="DoneTitle" Text="Done. Now the checklist." Style="{StaticResource H2}" FontSize="24" TextWrapping="Wrap"/>
+                  <TextBlock x:Name="DoneText" Style="{StaticResource Dim}" Margin="0,4,0,0"/>
+                </StackPanel>
+              </Grid>
+              <WrapPanel Margin="0,24,0,0">
+                <Button x:Name="BtnChecklist" Style="{StaticResource Primary}" Content="Open the checklist" Margin="0,0,10,10"/>
+                <Button x:Name="BtnTasks" Content="Turn on scheduled tasks" Margin="0,0,10,10"/>
+                <Button x:Name="BtnVerify" Content="Check again" Margin="0,0,10,10"/>
+                <Button x:Name="BtnLogs" Content="Open log folder" Margin="0,0,10,10"/>
+              </WrapPanel>
+            </StackPanel>
+          </Border>
+
+          <StackPanel x:Name="ActivePanel" Grid.Row="1" Margin="0,22,0,0" Visibility="Collapsed">
+            <TextBlock Text="COPYING NOW" Style="{StaticResource Eyebrow}" Margin="0,0,0,10"/>
+            <ItemsControl x:Name="ActiveList">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Stroke}" BorderThickness="1" CornerRadius="10" Padding="14,10" Margin="0,0,0,6">
+                    <Grid>
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                      </Grid.ColumnDefinitions>
+                      <ContentControl Style="{StaticResource Spinner}" Width="16" Height="16"/>
+                      <TextBlock Grid.Column="1" Text="{Binding Path}" Margin="12,0" TextTrimming="CharacterEllipsis" FontSize="13"/>
+                      <TextBlock Grid.Column="2" Text="{Binding SizeText}" Foreground="{StaticResource TextDim}" FontSize="12.5"/>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+
+          <Button x:Name="BtnImportLog" Grid.Row="2" Style="{StaticResource Ghost}" Content="Show details" HorizontalAlignment="Left" Margin="0,12,0,8"/>
+          <Border x:Name="ImportLogBorder" Grid.Row="3" Visibility="Collapsed" Background="{StaticResource Surface}" BorderBrush="{StaticResource Stroke}" BorderThickness="1" CornerRadius="12">
+            <TextBox x:Name="ImportLog" IsReadOnly="True" FontFamily="{StaticResource Mono}" FontSize="12" TextWrapping="NoWrap"
+                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Foreground="{StaticResource TextDim}"/>
+          </Border>
+        </Grid>
+      </Grid>
+
+      <!-- ============ Checklist ============ -->
+      <Grid x:Name="PageChecklist" Visibility="Collapsed">
+        <Grid.RenderTransform><TranslateTransform/></Grid.RenderTransform>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <Grid Margin="0,0,0,18">
+          <StackPanel>
+            <TextBlock Text="AFTER THE MOVE" Style="{StaticResource Eyebrow}"/>
+            <TextBlock Text="Checklist" Style="{StaticResource H1}" Margin="0,6,0,6"/>
+            <TextBlock x:Name="CheckCount" Style="{StaticResource Dim}"/>
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+            <Button x:Name="BtnCheckOpen" Content="Open as file" Margin="0,0,10,0"/>
+            <Button x:Name="BtnCheckBack" Content="Back"/>
+          </StackPanel>
+        </Grid>
+        <Border Grid.Row="1" Style="{StaticResource Card}" Padding="10">
+          <ListBox x:Name="CheckList">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <Grid>
+                  <TextBlock x:Name="head" Text="{Binding Text}" Style="{StaticResource Eyebrow}" FontSize="12.5" Foreground="{StaticResource Accent}" Margin="0,10,0,0" Visibility="Collapsed"/>
+                  <CheckBox x:Name="item" IsChecked="{Binding Done, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Top">
+                    <StackPanel>
+                      <TextBlock x:Name="itemText" Text="{Binding Text}" TextWrapping="Wrap" FontSize="14"/>
+                      <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource TextFaint}" Margin="0,2,0,0"
+                                 Visibility="{Binding HasDetail, Converter={StaticResource BoolVis}}"/>
+                    </StackPanel>
+                  </CheckBox>
+                </Grid>
+                <DataTemplate.Triggers>
+                  <DataTrigger Binding="{Binding IsHeader}" Value="True">
+                    <Setter TargetName="head" Property="Visibility" Value="Visible"/>
+                    <Setter TargetName="item" Property="Visibility" Value="Collapsed"/>
+                  </DataTrigger>
+                  <DataTrigger Binding="{Binding Done}" Value="True">
+                    <Setter TargetName="itemText" Property="Foreground" Value="{StaticResource TextFaint}"/>
+                    <Setter TargetName="itemText" Property="TextDecorations" Value="Strikethrough"/>
+                  </DataTrigger>
+                </DataTemplate.Triggers>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </Border>
+      </Grid>
+    </Grid>
+
+    <!-- ============ Dialog ============ -->
+    <Grid x:Name="Overlay" Grid.RowSpan="2" Visibility="Collapsed" Background="#B3050608">
+      <Border Style="{StaticResource Card}" MaxWidth="480" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="28">
+        <Border.Effect>
+          <DropShadowEffect BlurRadius="40" ShadowDepth="10" Opacity="0.6" Color="Black"/>
+        </Border.Effect>
+        <StackPanel>
+          <TextBlock x:Name="DlgTitle" Style="{StaticResource H2}" TextWrapping="Wrap"/>
+          <TextBlock x:Name="DlgText" Style="{StaticResource Dim}" Margin="0,10,0,0"/>
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,24,0,0">
+            <Button x:Name="DlgCancel" Content="Cancel" Margin="0,0,10,0"/>
+            <Button x:Name="DlgOk" Style="{StaticResource Primary}" Content="OK"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Grid>
+</Window>

@@ -1,8 +1,17 @@
-# Files: build the copy plan on the old PC, pull it with robocopy on the new PC.
+# Files: build the copy plan on the old PC, pull it with parallel robocopy on the new PC.
 
 function Test-NameExcluded([string]$Name, [string[]]$Patterns) {
     foreach ($p in $Patterns) { if ($Name -like $p) { return $true } }
     $false
+}
+
+function Get-SpeedProfile([string]$Speed) {
+    # Workers = robocopy processes at once; Mt = threads inside each one.
+    switch ($Speed) {
+        'gentle' { [pscustomobject]@{ Workers = 2; Mt = 4 } }
+        'full'   { [pscustomobject]@{ Workers = 8; Mt = 16 } }
+        default  { [pscustomobject]@{ Workers = 4; Mt = 8 } }
+    }
 }
 
 function Get-CopyPlan($Config) {
@@ -15,7 +24,7 @@ function Get-CopyPlan($Config) {
         if (Test-UnderAny $Path $skip) { return }
         $it = Get-Item -LiteralPath $Path -Force
         if ($it.Attributes -band [IO.FileAttributes]::ReparsePoint) { return }
-        $items.Add([pscustomobject]@{ Path = $it.FullName; Kind = $(if ($it.PSIsContainer) { 'dir' } else { 'file' }); Why = $Why })
+        $items.Add([pscustomobject]@{ Path = $it.FullName; Kind = $(if ($it.PSIsContainer) { 'dir' } else { 'file' }); Why = $Why; Group = $it.FullName })
     }
 
     # 1. Everything in the user profile except AppData and the exclusions.
@@ -41,7 +50,32 @@ function Get-CopyPlan($Config) {
     foreach ($f in Get-KeePassFiles) {
         if (-not ($items | Where-Object { Test-UnderAny $f @($_.Path) })) { & $add $f 'keepass' }
     }
-    $items
+
+    # 6. Chunks: big trees split into their subfolders. Small jobs run in parallel,
+    #    give a finer progress bar, and a restart skips every chunk that is done.
+    $exNames = @($Config.excludeDirs | Where-Object { $_ -notmatch '[\\%]' })
+    $exPaths = @(Get-RobocopyExcludes $Config | Where-Object { $_ -match '^[A-Za-z]:\\' }) + $skip
+    foreach ($it in $items) {
+        $depth = [int]$Config.chunkDepth.($it.Why)
+        Split-PlanItem $it $depth $exNames $exPaths
+    }
+}
+
+function Split-PlanItem($Item, [int]$Depth, [string[]]$ExNames, [string[]]$ExPaths) {
+    if ($Item.Kind -ne 'dir' -or $Depth -le 0) { return $Item }
+    $subs = @(Get-ChildItem -LiteralPath $Item.Path -Directory -Force -ErrorAction SilentlyContinue | Where-Object {
+        -not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -and
+        -not (Test-NameExcluded $_.Name $ExNames) -and -not (Test-UnderAny $_.FullName $ExPaths)
+    })
+    # More than 200 subfolders: one chunk. The "files" chunk must exclude each split subfolder
+    # by full path, and thousands of them would pass robocopy's 32k command-line limit.
+    if ($subs.Count -lt 2 -or $subs.Count -gt 200) { return $Item }
+    # This folder minus its split subfolders is one chunk (/E, so a subfolder made after the
+    # scan still moves); each subfolder is split further.
+    [pscustomobject]@{ Path = $Item.Path; Kind = 'files'; Why = $Item.Why; Group = $Item.Group; Skip = @($subs.FullName) }
+    foreach ($s in $subs) {
+        Split-PlanItem ([pscustomobject]@{ Path = $s.FullName; Kind = 'dir'; Why = $Item.Why; Group = $Item.Group }) ($Depth - 1) $ExNames $ExPaths
+    }
 }
 
 function Get-KeePassFiles {
@@ -80,21 +114,70 @@ function Get-RobocopyExcludes($Config) {
     $list
 }
 
-function Measure-PlanItem($Item, [string[]]$Excludes) {
+function ConvertTo-RoboArg([string]$Arg) {
+    # A quoted path that ends in \ escapes the quote: "D:\" breaks robocopy. Use D:\. and \\pc\share.
+    $a = $Arg
+    if ($a -match '[\\/]$' -and $a.Length -gt 3) { $a = $a.TrimEnd('\', '/') }
+    if ($a -match '^[A-Za-z]:\\?$') { $a = $a.Substring(0, 2) + '\.' }
+    if ($a -eq '' -or $a -match '\s') { return '"' + $a + '"' }
+    $a
+}
+
+function New-RoboJob([int]$Index, $Item, [string]$Src, [string]$Dst, [string[]]$Options, [string[]]$Excludes, [scriptblock]$MapPath) {
+    if ($Item.Kind -eq 'file') {
+        $list = @((Split-Path $Src), (Split-Path $Dst), (Split-Path $Src -Leaf)) + $Options
+    } elseif ($Item.Kind -eq 'files') {
+        # The folder with /E, minus its split subfolders (their own chunks), by full source path:
+        # a name alone would also drop same-named folders deeper down.
+        $skip = @($Item.Skip | Where-Object { $_ } | ForEach-Object { if ($MapPath) { & $MapPath $_ } else { $_ } })
+        $list = @($Src, $Dst, '/E') + $Options + $Excludes + @(if ($skip) { '/XD' } ) + $skip
+    } else {
+        $list = @($Src, $Dst, '/E') + $Options + $Excludes
+    }
+    $j = New-Object Hopover.RoboJob
+    $j.Index = $Index
+    $j.Path = $Item.Path
+    $j.Planned = [int64]$Item.Bytes
+    $j.Arguments = ($list | ForEach-Object { ConvertTo-RoboArg $_ }) -join ' '
+    $j
+}
+
+function Wait-Pool($Pool, [scriptblock]$OnStarted, [scriptblock]$OnDone, [scriptblock]$OnTick) {
+    $last = [DateTime]::MinValue
+    while ($true) {
+        $j = $null
+        while ($Pool.Started.TryDequeue([ref]$j)) { & $OnStarted $j }
+        while ($Pool.Done.TryDequeue([ref]$j)) {
+            # A job enqueues Started before Done: draining Started here again guarantees
+            # that its start event goes out before its done event.
+            $s = $null
+            while ($Pool.Started.TryDequeue([ref]$s)) { & $OnStarted $s }
+            & $OnDone $j
+        }
+        if (([DateTime]::Now - $last).TotalMilliseconds -ge 800) { & $OnTick; $last = [DateTime]::Now }
+        if ($Pool.Finished -and $Pool.Done.IsEmpty) { break }
+        Start-Sleep -Milliseconds 250
+    }
+    & $OnTick
+}
+
+function Measure-Plan($Plan, [string[]]$Excludes, [string]$Speed) {
     # robocopy /L lists what a copy would move, with the same excludes, and writes nothing.
     $probe = Join-Path $env:TEMP 'hopover-probe-does-not-exist'
-    if ($Item.Kind -eq 'dir') {
-        $out = robocopy $Item.Path $probe /L /E /XJ /BYTES /NFL /NDL /NJH /R:0 /W:0 @Excludes
-    } else {
-        $out = robocopy (Split-Path $Item.Path) $probe (Split-Path $Item.Path -Leaf) /L /XJ /BYTES /NFL /NDL /NJH /R:0 /W:0
-    }
-    # Summary rows are Dirs, Files, Bytes (labels are localised, so match by position).
-    $rows = @($out | Where-Object { $_ -match '^\s*[^:]+:\s+\d+\s+\d+' })
-    if ($rows.Count -lt 3) { return [pscustomobject]@{ Files = $null; Bytes = $null } }
-    [pscustomobject]@{
-        Files = [int64](($rows[1] -split ':', 2)[1].Trim() -split '\s+')[0]
-        Bytes = [int64](($rows[2] -split ':', 2)[1].Trim() -split '\s+')[0]
-    }
+    $opts = @('/L', '/XJ', '/BYTES', '/NFL', '/NDL', '/NJH', '/R:0', '/W:0')
+    $jobs = New-Object 'System.Collections.Generic.List[Hopover.RoboJob]'
+    for ($i = 0; $i -lt $Plan.Count; $i++) { $jobs.Add((New-RoboJob $i $Plan[$i] $Plan[$i].Path $probe $opts $Excludes)) }
+    # Scanning is light: more workers than copying.
+    $pool = [Hopover.RoboPool]::new($jobs.ToArray(), ((Get-SpeedProfile $Speed).Workers + 2), $Speed, $true)
+    $pool.Start()
+    $script:measured = 0
+    Wait-Pool $pool {} {
+        param($j)
+        $Plan[$j.Index] | Add-Member -NotePropertyName Bytes -NotePropertyValue $j.Bytes -Force
+        $Plan[$j.Index] | Add-Member -NotePropertyName Files -NotePropertyValue $j.Files -Force
+        $script:measured++
+        Send-Event SCAN "$($script:measured) $($Plan.Count) $($j.Path)"
+    } {}
 }
 
 function ConvertTo-TargetPath([string]$OldPath, [string]$OldProfile) {
@@ -115,39 +198,60 @@ function ConvertTo-SourcePath([string]$OldPath, [string]$From) {
     "\\$From\hopover-$drive" + $OldPath.Substring(2)
 }
 
-function Copy-Plan($Plan, [string]$From, [string]$OldProfile, [string[]]$Excludes, [string]$LogDir, [switch]$WhatIf) {
+function Copy-Plan($Plan, [string]$From, [string]$OldProfile, [string[]]$Excludes, [string]$Store, [string]$Speed,
+                   [scriptblock]$Heartbeat, [switch]$Recopy, [switch]$WhatIf) {
     # The excludes were expanded on the old PC; full paths in them must point at its share.
     $ex = @($Excludes | ForEach-Object { if ($_ -match '^[A-Za-z]:\\') { ConvertTo-SourcePath $_ $From } else { $_ } })
-    $log = Join-Path $LogDir 'robocopy-errors.log'
-    $failed = @()
-    $i = 0
-    $copied = [int64]0
-    $lastEvent = [DateTime]::MinValue
-    foreach ($it in $Plan) {
-        $i++
-        $src = ConvertTo-SourcePath $it.Path $From
-        $dst = ConvertTo-TargetPath $it.Path $OldProfile
-        Send-Event ITEM "$i $(@($Plan).Count) $([int64]$it.Bytes) $($it.Path)"
-        Write-Note "$($it.Why): $($it.Path) -> $dst"
-        # File lines stay on (no /NFL): their byte counts drive the progress bar.
-        # /XO: a re-run never overwrites a file that is newer on this PC.
-        $common = @('/COPY:DAT', '/DCOPY:DAT', '/MT:16', '/R:1', '/W:1', '/XJ', '/XO', '/NP', '/NDL', '/NJH', '/NJS', '/BYTES')
-        if ($WhatIf) { $common += '/L' }
-        if ($it.Kind -eq 'dir') { $rc = @($src, $dst, '/E') + $common + $ex }
-        else { $rc = @((Split-Path $src), (Split-Path $dst), (Split-Path $src -Leaf)) + $common }
-        robocopy @rc | ForEach-Object {
-            if ($_ -match '^\t[^\t*]*\t+\s*(\d+)\t') {
-                $copied += [int64]$Matches[1]
-                if (([DateTime]::Now - $lastEvent).TotalSeconds -ge 1) { Send-Event BYTES $copied; $lastEvent = [DateTime]::Now }
-            } elseif ($_ -match 'ERROR|FEHLER') {
-                Add-Content -Path $log -Value $_ -Encoding UTF8
-            }
-        }
-        if ($LASTEXITCODE -ge 8) { Write-Warn "robocopy exit $LASTEXITCODE for $($it.Path) (see $log)"; $failed += $it.Path }
+    $log = Join-Path $Store 'logs\robocopy-errors.log'
+    $doneFile = Join-Path $Store 'files-done.json'
+    $done = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    if (-not $Recopy) { foreach ($p in @(Read-Json $doneFile)) { if ($p) { [void]$done.Add($p) } } }
+    $sp = Get-SpeedProfile $Speed
+    # /XO: a re-run never overwrites a file that is newer on this PC. File lines stay on
+    # (no /NFL): their byte counts drive the progress bar.
+    $opts = @('/COPY:DAT', '/DCOPY:DAT', "/MT:$($sp.Mt)", '/R:1', '/W:1', '/XJ', '/XO', '/NP', '/NDL', '/NJH', '/NJS', '/BYTES')
+    if ($WhatIf) { $opts += '/L' }
+
+    $total = [int64](($Plan | Measure-Object Bytes -Sum).Sum)
+    # Resume key = kind and path: a folder that was a "files" chunk in an earlier run and is a
+    # whole tree now (other chunkDepth) must copy again.
+    $skipped = [int64](($Plan | Where-Object { $done.Contains("$($_.Kind)|$($_.Path)") } | Measure-Object Bytes -Sum).Sum)
+    # Largest first: the long jobs start early, so the end has no single straggler.
+    $todo = @($Plan | Where-Object { -not $done.Contains("$($_.Kind)|$($_.Path)") } | Sort-Object { [int64]$_.Bytes } -Descending)
+    if ($skipped) { Write-Note ("{0} chunks were done in an earlier run ({1:N1} GB): skipped" -f ($Plan.Count - $todo.Count), ($skipped / 1GB)) }
+
+    $jobs = New-Object 'System.Collections.Generic.List[Hopover.RoboJob]'
+    for ($i = 0; $i -lt $todo.Count; $i++) {
+        $it = $todo[$i]
+        $jobs.Add((New-RoboJob $i $it (ConvertTo-SourcePath $it.Path $From) (ConvertTo-TargetPath $it.Path $OldProfile) $opts $ex { param($p) ConvertTo-SourcePath $p $From }))
     }
-    Send-Event BYTES $copied
-    if (-not $WhatIf) { Repair-SshAcl }
-    $failed
+    $pool = [Hopover.RoboPool]::new($jobs.ToArray(), $sp.Workers, $Speed, $false)
+    Write-Note "$($todo.Count) chunks, $($sp.Workers) at once, $($sp.Mt) threads each ($Speed)"
+    $pool.Start()
+
+    $state = @{ DoneBytes = $skipped; DoneCopied = [int64]0; Failed = @(); LastSave = [DateTime]::Now }
+    Wait-Pool $pool {
+        param($j)
+        Send-Event ITEM "$($j.Index) $($todo.Count) $($j.Planned) $($j.Path)"
+    } {
+        param($j)
+        $state.DoneBytes += $j.Planned
+        $state.DoneCopied += $j.Copied
+        Send-Event ITEMDONE "$($j.Index) $($j.Planned) $($j.ExitCode)"
+        if ($j.ExitCode -ge 8) { Write-Warn "robocopy exit $($j.ExitCode) for $($j.Path) (see $log)"; $state.Failed += $j.Path }
+        elseif (-not $WhatIf) { [void]$done.Add("$($todo[$j.Index].Kind)|$($j.Path)") }
+        if (([DateTime]::Now - $state.LastSave).TotalSeconds -ge 30) { Write-Json @($done) $doneFile; $state.LastSave = [DateTime]::Now }
+    } {
+        # Done chunks count with their planned size; running ones with what they copied so far.
+        $now = $state.DoneBytes + [math]::Max(0, $pool.Copied - $state.DoneCopied)
+        Send-Event PROGRESS "$now $total $($pool.Copied)"
+        $e = $null
+        while ($pool.Errors.TryDequeue([ref]$e)) { Add-Content -Path $log -Value $e -Encoding UTF8 }
+        # Not named OnTick: inside Wait-Pool that name is this very block.
+        if ($Heartbeat) { & $Heartbeat }
+    }
+    if (-not $WhatIf) { Write-Json @($done) $doneFile; Repair-SshAcl }
+    $state.Failed
 }
 
 function Repair-SshAcl {

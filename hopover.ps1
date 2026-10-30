@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   Hopover: moves a Windows PC to a new one over the LAN. Apps, settings, keys, WSL, tasks, files.
-  The GUI (Hopover.cmd) drives this script; it also runs alone.
+  Hopover.exe embeds and drives this script; it also runs alone.
 
 .EXAMPLE
   # Old PC (admin PowerShell):
@@ -20,6 +20,9 @@ param(
     [string[]]$Only,
     [string[]]$Skip,
     [switch]$Sizes,
+    [ValidateSet('gentle', 'balanced', 'full')]
+    [string]$Speed = 'balanced',
+    [switch]$Recopy,
     [switch]$WhatIf
 )
 
@@ -30,6 +33,10 @@ $Root = $PSScriptRoot
 . (Join-Path $Root 'lib\Files.ps1')
 . (Join-Path $Root 'lib\System.ps1')
 . (Join-Path $Root 'lib\Report.ps1')
+if (-not ('Hopover.RoboPool' -as [type])) { Add-Type -Path (Join-Path $Root 'lib\Native.cs') }
+# Behind the user's own programs: lower CPU and I/O priority. robocopy, winget and wsl
+# start as children and inherit the lower CPU class; the pool lowers their I/O too.
+[Hopover.Native]::Lower([Diagnostics.Process]::GetCurrentProcess(), $Speed)
 
 # -Only a,b arrives as one string when the GUI starts this script with -File.
 $Only = @($Only | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
@@ -88,21 +95,22 @@ function Invoke-Inventory {
     Write-Step 'Inventory'
     Send-Event STEP 'inventory start'
     $plan = @(Get-CopyPlan $Config)
-    if ($Sizes -or $Command -eq 'inventory') {
-        $ex = Get-RobocopyExcludes $Config
-        $i = 0
-        foreach ($it in $plan) {
-            $i++
-            Send-Event SCAN "$i $($plan.Count) $($it.Path)"
-            $m = Measure-PlanItem $it $ex
-            $it | Add-Member -NotePropertyName Bytes -NotePropertyValue ([int64]$m.Bytes) -Force
-            $it | Add-Member -NotePropertyName Files -NotePropertyValue ([int64]$m.Files) -Force
-        }
+    # Export measures too when it has to scan again: without sizes the progress bar and the
+    # largest-first order break on the new PC.
+    if ($Sizes -or $Command -in 'inventory', 'export') {
+        Write-Note "$($plan.Count) chunks; measuring them in parallel"
+        Measure-Plan $plan @(Get-RobocopyExcludes $Config) $Speed
         $total = ($plan | Measure-Object Bytes -Sum).Sum
-        $plan | Sort-Object Bytes -Descending |
-            Select-Object @{ n = 'GB'; e = { [math]::Round($_.Bytes / 1GB, 2) } }, Files, Why, Path |
-            Format-Table -AutoSize | Out-String -Width 300 | Set-Content "$Store\sizes.txt" -Encoding UTF8
-        Write-Note ("Total to copy: {0:N1} GB in {1} items. Full list: $Store\sizes.txt" -f ($total / 1GB), $plan.Count) 'Green'
+        $plan | Group-Object Group | ForEach-Object {
+            [pscustomobject]@{
+                GB = [math]::Round((($_.Group | Measure-Object Bytes -Sum).Sum) / 1GB, 2)
+                Files = ($_.Group | Measure-Object Files -Sum).Sum
+                Chunks = $_.Count
+                Why = $_.Group[0].Why
+                Path = $_.Name
+            }
+        } | Sort-Object GB -Descending | Format-Table -AutoSize | Out-String -Width 300 | Set-Content "$Store\sizes.txt" -Encoding UTF8
+        Write-Note ("Total to copy: {0:N1} GB in {1} chunks. Full list: $Store\sizes.txt" -f ($total / 1GB), $plan.Count) 'Green'
     }
     $manifest = [pscustomobject]@{
         Computer   = $env:COMPUTERNAME
@@ -137,7 +145,8 @@ function Get-ExportManifest {
     if (-not $fresh) { $m = Invoke-Inventory }
     $off = @(Read-Json "$Store\deselected.json" | Where-Object { $_ })
     if ($off.Count) {
-        $m.Plan = @($m.Plan | Where-Object { $off -notcontains $_.Path })
+        # The GUI lists whole groups (C:\java); a group leaves out every chunk in it.
+        $m.Plan = @($m.Plan | Where-Object { $off -notcontains $_.Group -and $off -notcontains $_.Path })
         Write-Note "$($off.Count) items left out by choice"
         Write-Json $m "$Store\manifest.json"
     }
@@ -174,20 +183,74 @@ function Invoke-Share {
     $ips = @(Get-LanAddresses)
     Send-Event SHARE "$env:COMPUTERNAME|$me|$($ips -join ',')"
     Write-Host ''
-    Write-Host 'On the NEW PC, start Hopover.cmd from OneDrive\Hopover, or run in an administrator PowerShell:' -ForegroundColor Green
+    Write-Host 'On the NEW PC, start Hopover.exe from OneDrive\Hopover, or run in an administrator PowerShell:' -ForegroundColor Green
     Write-Host "  net use \\$env:COMPUTERNAME\IPC`$ /user:$me" -ForegroundColor Green
     Write-Host "  powershell -ExecutionPolicy Bypass -File \\$env:COMPUTERNAME\hopover-store\tool\hopover.ps1 import -From $env:COMPUTERNAME" -ForegroundColor Green
     Write-Host "PC name: $env:COMPUTERNAME  IP: $($ips -join ', ')  user: $me"
 }
 
 function Publish-Tool {
-    robocopy $Root "$Store\tool" /E /XD .git /NFL /NDL /NJH /NJS | Out-Null
+    # Hopover.exe carries the engine inside; without it (CLI use) the scripts move instead.
     # The tool holds no secrets, so a copy in OneDrive is the easy way onto the new PC.
     $od = @($env:OneDrive, $env:OneDriveCommercial, $env:OneDriveConsumer) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
-    if ($od) {
-        robocopy $Root "$od\Hopover" /E /XD .git /NFL /NDL /NJH /NJS | Out-Null
-        Write-Note "Tool copied to $od\Hopover"
+    $targets = @("$Store\tool") + @(if ($od) { "$od\Hopover" })
+    foreach ($t in $targets) {
+        New-Item -ItemType Directory -Path $t -Force | Out-Null
+        if ($env:HOPOVER_EXE -and (Test-Path $env:HOPOVER_EXE)) { Copy-Item $env:HOPOVER_EXE "$t\Hopover.exe" -Force }
+        else { robocopy $Root $t /E /XD .git dist app /NFL /NDL /NJH /NJS | Out-Null }
+        Write-Note "Tool copied to $t"
     }
+}
+
+# winget runs beside the file copy: both take hours, together they take the longer of the two.
+function Start-BackgroundApps {
+    $log = Join-Path $Store "logs\apps-$(Get-Date -Format yyyyMMdd-HHmmss).log"
+    $ps = [powershell]::Create()
+    [void]$ps.AddScript({
+        param($Root, $Store, $Log, $DryRun)
+        . "$Root\lib\Common.ps1"
+        . "$Root\lib\System.ps1"
+        $script:Log = $Log
+        Import-Apps $Store (Get-MigrationConfig $Root) -WhatIf:$DryRun
+    }).AddArgument($Root).AddArgument($Store).AddArgument($log).AddArgument([bool]$WhatIf)
+    Write-Step 'Apps (winget) start in the background'
+    Send-Event STEP 'apps start'
+    Write-Note "winget log: $log"
+    [pscustomobject]@{ PS = $ps; Handle = $ps.BeginInvoke(); Reported = $false }
+}
+
+function Test-BackgroundApps($Bg) {
+    if (-not $Bg -or $Bg.Reported -or -not $Bg.Handle.IsCompleted) { return }
+    $Bg.Reported = $true
+    try {
+        [void]$Bg.PS.EndInvoke($Bg.Handle)
+        if ($Bg.PS.HadErrors) { foreach ($e in $Bg.PS.Streams.Error) { Write-Warn "apps: $e" } }
+        Send-Event STEP 'apps done'
+        if (-not $WhatIf) { Save-StepDone 'apps' }
+        Write-Note 'Apps: winget finished'
+    } catch {
+        Write-Warn "apps failed: $($_.Exception.Message)"
+        Send-Event STEP 'apps failed'
+        $script:FailedPhases += 'apps'
+    }
+    $Bg.PS.Dispose()
+}
+
+function Wait-BackgroundApps($Bg) {
+    if (-not $Bg -or $Bg.Reported) { return }
+    Write-Step 'Wait for the app installs to finish'
+    # A winget installer that waits for a click would hold the move forever: 4 hours at most.
+    $until = (Get-Date).AddHours(4)
+    while (-not $Bg.Handle.IsCompleted -and (Get-Date) -lt $until) { Start-Sleep -Seconds 2 }
+    if (-not $Bg.Handle.IsCompleted) {
+        Write-Warn 'winget still runs after 4 hours: Hopover goes on. Check the apps log and install the rest by hand.'
+        Send-Event STEP 'apps failed'
+        $script:FailedPhases += 'apps'
+        $Bg.Reported = $true
+        [void]$Bg.PS.BeginStop($null, $null)  # no wait: a hung installer would block Stop()
+        return
+    }
+    Test-BackgroundApps $Bg
 }
 
 function Invoke-Export {
@@ -233,20 +296,25 @@ function Invoke-Import {
     if ($m.User -ne $env:USERNAME) { Write-Warn "user name changed: $($m.User) -> $env:USERNAME. Paths in configs that name $old need a check." }
     $notes = @{}
 
-    Invoke-Phase 'apps'     'Apps (winget, this takes a while)' { Import-Apps $Store $Config -WhatIf:$WhatIf }
+    # Order: env first (installers then add to the merged PATH), apps in the background,
+    # files and WSL meanwhile; settings, Docker and tasks wait for the apps they belong to.
     Invoke-Phase 'env'      'Environment variables' { $notes.EnvConflicts = @(Import-EnvVars $Store $old -WhatIf:$WhatIf) }
-    Invoke-Phase 'files'    "Files from \\$From ($(@($m.Plan).Count) items)" {
-        $notes.CopyFailed = @(Copy-Plan $m.Plan $From $old @($m.Excludes) "$Store\logs" -WhatIf:$WhatIf)
+    $bg = $null
+    if (Use-Step 'apps') { $bg = Start-BackgroundApps } else { Send-Event STEP 'apps skipped' }
+    Invoke-Phase 'files'    "Files from \\$From ($(@($m.Plan).Count) chunks)" {
+        $notes.CopyFailed = @(Copy-Plan $m.Plan $From $old @($m.Excludes) $Store $Speed { Test-BackgroundApps $bg } -Recopy:$Recopy -WhatIf:$WhatIf)
         $notes.JunctionFailed = @(Restore-Junctions $m.Junctions $old -WhatIf:$WhatIf)
-        # Not "done" while items failed: the next start copies again (robocopy skips what is there).
-        if ($notes.CopyFailed.Count) { throw "$($notes.CopyFailed.Count) items did not copy completely" }
+        # Not "done" while chunks failed: the next start copies only those again.
+        if ($notes.CopyFailed.Count) { throw "$($notes.CopyFailed.Count) chunks did not copy completely" }
     }
-    Invoke-Phase 'settings' 'Settings, Wi-Fi, drives, printers' { Import-Settings $Store $old -WhatIf:$WhatIf }
     Invoke-Phase 'certs'    'Personal certificates' {
         if (Test-Path "$Store\certs\*.pfx") { Import-Certs $Store (Get-CertPassword 'Certificate export password from the old PC') -WhatIf:$WhatIf }
         else { Write-Note 'none' }
     }
     Invoke-Phase 'wsl'      'WSL distros'           { Import-Wsl $Store -WhatIf:$WhatIf }
+    Wait-BackgroundApps $bg
+    # After the installs: an installer would overwrite app settings imported before it.
+    Invoke-Phase 'settings' 'Windows and app settings, Wi-Fi, drives, printers' { Import-Settings $Store $old -WhatIf:$WhatIf }
     Invoke-Phase 'docker'   'Docker named volumes'  { Import-DockerVolumes $Store -WhatIf:$WhatIf }
     Invoke-Phase 'tasks'    'Scheduled tasks (imported switched off)' { $notes.TaskFailed = @(Import-Tasks $Store $old $m.User -WhatIf:$WhatIf) }
 

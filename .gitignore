@@ -1,2 +1,5 @@
 store/
 *.log
+obj/
+dist/shots/
+dist/hopover.ico
