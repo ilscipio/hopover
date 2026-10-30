@@ -164,8 +164,8 @@ namespace Hopover.App
             var shadowScale = new ScaleTransform(1, 1);
             shadow.RenderTransform = shadowScale;
             Canvas.SetLeft(shadow, 38); Canvas.SetTop(shadow, 110);
-            var arch = new ShapePath { Data = Geometry.Parse("M45,104 V76 A17,17 0 0 1 79,76 V104"), Stroke = Arch, StrokeThickness = 16 };
-            var scale = new ScaleTransform(1, 1, 62, 104);
+            var arch = new ShapePath { Data = Geometry.Parse("M36,68 H62 A17,17 0 0 1 79,85 V104"), Stroke = Arch, StrokeThickness = 16 };
+            var scale = new ScaleTransform(1, 1, 79, 104);
             var move = new TranslateTransform();
             var g = new TransformGroup();
             g.Children.Add(scale);

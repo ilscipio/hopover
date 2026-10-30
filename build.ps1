@@ -36,8 +36,8 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, Sys
 $themeXaml = (Get-Content (Join-Path $App 'Theme.xaml') -Raw -Encoding UTF8).Replace('@FONTDIR@', ([Uri](Join-Path $App 'fonts\')).AbsoluteUri)
 $theme = [Windows.Markup.XamlReader]::Parse($themeXaml)
 $pngs = foreach ($size in 16, 20, 24, 32, 40, 48, 64, 128, 256) {
-    # Heavier cuts of the mark at the small sizes (16 px heaviest, 20 and 24 px heavy).
-    $logo = if ($size -le 16) { $theme['LogoIcon16'] } elseif ($size -le 24) { $theme['LogoIcon24'] } else { $theme['LogoIcon'] }
+    # Heavier cuts of the mark at the small sizes (16 px heaviest with a closed gap, 20 to 32 px heavy).
+    $logo = if ($size -le 16) { $theme['LogoIcon16'] } elseif ($size -le 32) { $theme['LogoIcon24'] } else { $theme['LogoIcon'] }
     $dv = New-Object Windows.Media.DrawingVisual
     $dc = $dv.RenderOpen()
     $dc.DrawImage($logo, (New-Object Windows.Rect 0, 0, $size, $size))

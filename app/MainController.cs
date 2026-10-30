@@ -757,7 +757,7 @@ namespace Hopover.App
             };
             F<ItemsControl>("ReceiptLines").ItemsSource = lines;
             F<TextBlock>("ReceiptNo").Text = "NO. " + Pledge.TicketNo;
-            F<TextBlock>("CoffeeLabel").Text = "REDEEM COUPON NO. " + Pledge.TicketNo + " · " + Branding.PriceLabel.ToUpperInvariant();
+            F<TextBlock>("CoffeeLabel").Text = Branding.PriceLabel.ToUpperInvariant().Replace(", ", " · ");
             F<Button>("BtnReview").Content = "Leave a review on " + Branding.ReviewSite;
             RefreshPaid();
             returnPage = "PageDone";

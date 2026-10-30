@@ -729,7 +729,7 @@
             </Border>
             <Path Grid.Row="1" Height="14" Stretch="Fill" Fill="{StaticResource Paper}" Margin="0,-1,0,0"
                   Data="M0,0 H360 V2 L348,14 L336,2 L324,14 L312,2 L300,14 L288,2 L276,14 L264,2 L252,14 L240,2 L228,14 L216,2 L204,14 L192,2 L180,14 L168,2 L156,14 L144,2 L132,14 L120,2 L108,14 L96,2 L84,14 L72,2 L60,14 L48,2 L36,14 L24,2 L12,14 L0,2 Z"/>
-            <Border x:Name="StampDelivered" Margin="50,142,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Padding="14,0,14,2"
+            <Border x:Name="StampDelivered" Margin="30,0,0,-62" HorizontalAlignment="Left" VerticalAlignment="Bottom" Padding="14,0,14,2"
                     BorderBrush="{StaticResource Ink}" BorderThickness="5">
               <TextBlock Text="DELIVERED" FontFamily="{StaticResource StencilBlack}" FontSize="62"/>
             </Border>

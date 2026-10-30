@@ -45,7 +45,7 @@
         <GeometryDrawing Brush="Transparent"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,100,100"/></GeometryDrawing.Geometry></GeometryDrawing>
         <GeometryDrawing Brush="#111213"><GeometryDrawing.Geometry><RectangleGeometry Rect="14,8,18,84"/></GeometryDrawing.Geometry></GeometryDrawing>
         <GeometryDrawing Brush="#4D111213"><GeometryDrawing.Geometry><RectangleGeometry Rect="38,90,49,2"/></GeometryDrawing.Geometry></GeometryDrawing>
-        <GeometryDrawing Geometry="M45,84 V56 A17,17 0 0 1 79,56 V84">
+        <GeometryDrawing Geometry="M36,48 H62 A17,17 0 0 1 79,65 V84">
           <GeometryDrawing.Pen><Pen Brush="#FF5A1F" Thickness="16"/></GeometryDrawing.Pen>
         </GeometryDrawing>
       </DrawingGroup>
@@ -57,7 +57,7 @@
       <DrawingGroup>
         <GeometryDrawing Brush="Transparent"><GeometryDrawing.Geometry><RectangleGeometry Rect="8,0,84,100"/></GeometryDrawing.Geometry></GeometryDrawing>
         <GeometryDrawing Brush="#111213"><GeometryDrawing.Geometry><RectangleGeometry Rect="10,8,24,84"/></GeometryDrawing.Geometry></GeometryDrawing>
-        <GeometryDrawing Geometry="M47,84 V58 A16,16 0 0 1 79,58 V84">
+        <GeometryDrawing Geometry="M41,51 H63 A16,16 0 0 1 79,67 V84">
           <GeometryDrawing.Pen><Pen Brush="#FF5A1F" Thickness="22"/></GeometryDrawing.Pen>
         </GeometryDrawing>
       </DrawingGroup>
@@ -71,7 +71,7 @@
         <DrawingGroup>
           <DrawingGroup.Transform><MatrixTransform Matrix="0.58,0,0,0.58,21,21"/></DrawingGroup.Transform>
           <GeometryDrawing Brush="#111213"><GeometryDrawing.Geometry><RectangleGeometry Rect="14,8,18,84"/></GeometryDrawing.Geometry></GeometryDrawing>
-          <GeometryDrawing Geometry="M45,84 V56 A17,17 0 0 1 79,56 V84">
+          <GeometryDrawing Geometry="M36,48 H62 A17,17 0 0 1 79,65 V84">
             <GeometryDrawing.Pen><Pen Brush="#111213" Thickness="16"/></GeometryDrawing.Pen>
           </GeometryDrawing>
         </DrawingGroup>
@@ -85,7 +85,7 @@
         <DrawingGroup>
           <DrawingGroup.Transform><MatrixTransform Matrix="0.66,0,0,0.66,17,17"/></DrawingGroup.Transform>
           <GeometryDrawing Brush="#111213"><GeometryDrawing.Geometry><RectangleGeometry Rect="10,8,24,84"/></GeometryDrawing.Geometry></GeometryDrawing>
-          <GeometryDrawing Geometry="M47,84 V58 A16,16 0 0 1 79,58 V84">
+          <GeometryDrawing Geometry="M41,51 H63 A16,16 0 0 1 79,67 V84">
             <GeometryDrawing.Pen><Pen Brush="#111213" Thickness="22"/></GeometryDrawing.Pen>
           </GeometryDrawing>
         </DrawingGroup>
@@ -99,7 +99,7 @@
         <DrawingGroup>
           <DrawingGroup.Transform><MatrixTransform Matrix="0.72,0,0,0.72,14,14"/></DrawingGroup.Transform>
           <GeometryDrawing Brush="#111213"><GeometryDrawing.Geometry><RectangleGeometry Rect="8,6,28,88"/></GeometryDrawing.Geometry></GeometryDrawing>
-          <GeometryDrawing Geometry="M49,88 V60 A15,15 0 0 1 79,60 V88">
+          <GeometryDrawing Geometry="M36,53 H64 A15,15 0 0 1 79,68 V88">
             <GeometryDrawing.Pen><Pen Brush="#111213" Thickness="26"/></GeometryDrawing.Pen>
           </GeometryDrawing>
         </DrawingGroup>
