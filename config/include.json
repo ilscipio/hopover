@@ -1,0 +1,51 @@
+{
+  "_doc": "What hopover.ps1 moves. %VARS% expand on the old PC. Edit, then run 'hopover.ps1 inventory' to see the sizes.",
+
+  "profileExclude": ["AppData", ".cache", ".thumbnails", ".dbus-keyrings", ".oracle_jre_usage", "seadrive_root", "OneDrive*", "NTUSER*", "ntuser*", "Searches", "IntelGraphicsProfiles", "MicrosoftEdgeBackups"],
+
+  "cRootExclude": ["Windows", "Program Files", "Program Files (x86)", "ProgramData", "Users", "Recovery", "PerfLogs", "System Volume Information", "$Recycle.Bin", "$WinREAgent", "$SysReset", "$Windows.~BT", "$Windows.~WS", "Config.Msi", "Documents and Settings", "MSOCache", "OneDriveTemp", "Intel", "AMD", "NVIDIA", "ESD", "inetpub", "Seafile", "hopover-store", "*.sys", "DumpStack.log*"],
+
+  "appDataRoaming": [
+    "JetBrains", "Code\\User", "Cursor\\User", "KeePass", "Claude", "npm",
+    "Notepad++", "FileZilla", "WinSCP.ini", "GitHub Desktop", "Postman", "Zed", "DBeaverData",
+    "Microsoft\\Signatures", "Microsoft\\Templates", "Microsoft\\UProof", "Microsoft\\Sticky Notes",
+    "Microsoft\\Windows\\Start Menu\\Programs", "Microsoft\\Windows\\PowerShell\\PSReadLine",
+    "Microsoft\\Windows\\Themes", "Thunderbird", "Mozilla\\Firefox"
+  ],
+
+  "appDataLocal": [
+    "Microsoft\\Windows\\Fonts",
+    "Packages\\Microsoft.WindowsTerminal_8wekyb3d8bbwe\\LocalState",
+    "Packages\\Microsoft.MicrosoftStickyNotes_8wekyb3d8bbwe\\LocalState",
+    "JetBrains\\Toolbox\\.settings.json"
+  ],
+
+  "otherDrives": "all-fixed",
+
+  "skipUnder": ["%OneDrive%", "%OneDriveCommercial%", "%OneDriveConsumer%", "%USERPROFILE%\\seadrive_root", "C:\\Seafile"],
+
+  "excludeDirs": [
+    "$RECYCLE.BIN", "System Volume Information", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+    "%USERPROFILE%\\.gradle\\caches", "%USERPROFILE%\\.gradle\\daemon", "%USERPROFILE%\\.gradle\\native",
+    "%USERPROFILE%\\.cargo\\registry\\cache"
+  ],
+  "excludeFiles": ["hiberfil.sys", "pagefile.sys", "swapfile.sys", "~$*", "java_error_in_*.hprof"],
+
+  "registry": [
+    "HKCU\\Software\\SimonTatham\\PuTTY",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Search",
+    "HKCU\\Control Panel\\International",
+    "HKCU\\Control Panel\\Mouse",
+    "HKCU\\Console",
+    "HKCU\\Keyboard Layout\\Preload",
+    "HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Fonts"
+  ],
+
+  "priorityApps": ["AgileBits.1Password", "DominikReichl.KeePass", "Microsoft.OneDrive", "Seafile.Seadrive", "Git.Git", "Microsoft.PowerShell", "Microsoft.WindowsTerminal"],
+
+  "taskExclude": "S-1-5-21-|OneDrive|Zoom|NVIDIA|Adobe|SoftLanding|GoogleUserPEH|GoogleUpdate|MicrosoftEdgeUpdate|Agent Activation|StartCN|StartDVR|Snagit|RPCServiceHealthCheck",
+
+  "wslSkip": ["docker-desktop", "docker-desktop-data"]
+}
