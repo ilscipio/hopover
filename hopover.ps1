@@ -160,33 +160,24 @@ function Get-LanAddresses {
 }
 
 function Invoke-Share {
+    # No SMB shares. The old PC serves its files through Hopover.exe --link serve (the GUI starts it), guarded
+    # by the pairing code. Windows Firewall needs one allow rule for the program: TCP 47800 and UDP 47801.
     Assert-Admin
-    Write-Step 'Share the store and the drives (read-only, this user only)'
-    $me = "$env:USERDOMAIN\$env:USERNAME"
-    $shares = @{ 'hopover-store' = $Store }
-    Get-Volume | Where-Object { $_.DriveType -eq 'Fixed' -and $_.DriveLetter } |
-        ForEach-Object { $shares["hopover-$("$($_.DriveLetter)".ToLower())"] = "$($_.DriveLetter):\" }
-    foreach ($n in $shares.Keys) {
-        if (Get-SmbShare -Name $n -ErrorAction SilentlyContinue) { continue }
-        New-SmbShare -Name $n -Path $shares[$n] -ReadAccess $me | Out-Null
-        Write-Note "\\$env:COMPUTERNAME\$n -> $($shares[$n])"
-    }
-    # "File and Printer Sharing" rules, by resource id so it works on a German Windows too.
-    # Never on the Public profile; cleanup switches off again what this step switched on.
-    $rules = @(Get-NetFirewallRule -Group '@FirewallAPI.dll,-28502' -ErrorAction SilentlyContinue |
-        Where-Object { $_.Enabled -eq 'False' -and "$($_.Profile)" -notmatch 'Public|Any' })
-    if ($rules) {
-        $rules | Enable-NetFirewallRule
-        $prev = @(Read-Json "$Store\firewall-enabled.json" | Where-Object { $_ })
-        Write-Json @($prev + @($rules.Name) | Sort-Object -Unique) "$Store\firewall-enabled.json"
-    }
+    Write-Step 'Open the link (firewall rule for Hopover.exe, pairing code on screen)'
+    $exe = if ($env:HOPOVER_EXE) { $env:HOPOVER_EXE } else { $null }
+    Remove-NetFirewallRule -Group 'Hopover' -ErrorAction SilentlyContinue
+    $common = @{ Direction = 'Inbound'; Action = 'Allow'; Group = 'Hopover'; Profile = 'Any' }
+    if ($exe) { $common.Program = $exe }
+    New-NetFirewallRule -DisplayName 'Hopover link (TCP)' -Protocol TCP -LocalPort 47800 @common | Out-Null
+    New-NetFirewallRule -DisplayName 'Hopover link (UDP discovery)' -Protocol UDP -LocalPort 47801 @common | Out-Null
+    Write-Note 'Firewall: TCP 47800 and UDP 47801 open for Hopover.exe. Cleanup removes the rules.'
     $ips = @(Get-LanAddresses)
-    Send-Event SHARE "$env:COMPUTERNAME|$me|$($ips -join ',')"
+    Send-Event SHARE "$env:COMPUTERNAME|$env:USERDOMAIN\$env:USERNAME|$($ips -join ',')"
     Write-Host ''
-    Write-Host 'On the NEW PC, start Hopover.exe from OneDrive\Hopover, or run in an administrator PowerShell:' -ForegroundColor Green
-    Write-Host "  net use \\$env:COMPUTERNAME\IPC`$ /user:$me" -ForegroundColor Green
-    Write-Host "  powershell -ExecutionPolicy Bypass -File \\$env:COMPUTERNAME\hopover-store\tool\hopover.ps1 import -From $env:COMPUTERNAME" -ForegroundColor Green
-    Write-Host "PC name: $env:COMPUTERNAME  IP: $($ips -join ', ')  user: $me"
+    if (Test-GuiChild) { return }
+    Write-Host 'Now start the link on this PC (it prints the pairing code):' -ForegroundColor Green
+    Write-Host "  `"$exe`" --link serve --store `"$Store`"" -ForegroundColor Green
+    Write-Host 'On the NEW PC, start Hopover.exe, choose "This is the new PC" and type the code.' -ForegroundColor Green
 }
 
 function Publish-Tool {
@@ -287,20 +278,20 @@ function Invoke-Export {
 }
 
 function Connect-OldPc {
-    if (-not $From) { throw 'Give the old PC name: -From OLDPC' }
-    if (Test-Path "\\$From\hopover-store\manifest.json") { return }
-    if (Test-GuiChild) { throw "Cannot read \\$From\hopover-store. Connect again in Hopover." }
-    Write-Note "Log in to \\$From (user name of the old PC, e.g. $From\$env:USERNAME or your Microsoft account mail)"
-    net use "\\$From\IPC$" /persistent:no
-    if (-not (Test-Path "\\$From\hopover-store\manifest.json")) { throw "Cannot read \\$From\hopover-store. Run 'hopover.ps1 export' on the old PC first." }
+    # The files come through the link (pairing code), not through a share. The name in -From is ignored.
+    $script:From = 'link'
+    $exe = Get-LinkExe
+    $out = & $exe --link info 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { throw "The link to the old PC is down. Connect again in Hopover. $out" }
+    Write-Note "Linked to the old PC: $($out.Trim())"
 }
 
 function Invoke-Import {
     Assert-Admin
     Connect-OldPc
-    Write-Step "Copy the store from \\$From to $Store"
-    robocopy "\\$From\hopover-store" $Store /E /XD logs tool /XF 'state-*.json' firewall-enabled.json deselected.json /MT:8 /R:1 /W:1 /NFL /NDL /NJH /NJS | Out-Null
-    if ($LASTEXITCODE -ge 8) { throw "copy of \\$From\hopover-store failed (robocopy $LASTEXITCODE)" }
+    Write-Step "Copy the store from the old PC to $Store"
+    $rc = Invoke-LinkCopy @('\\link\hopover-store', $Store, '/E', '/XD', 'logs', 'tool', '/XF', 'state-*.json', 'firewall-enabled.json', 'deselected.json', '/MT:8', '/R:1', '/W:1')
+    if ($rc -ge 8) { throw "copy of the store from the old PC failed (exit $rc)" }
     $m = Read-Json "$Store\manifest.json"
     if (-not $m -or -not $m.Profile) { throw "$Store\manifest.json is missing or empty" }
     $old = $m.Profile
@@ -313,7 +304,7 @@ function Invoke-Import {
     Invoke-Phase 'env'      'Environment variables' { $notes.EnvConflicts = @(Import-EnvVars $Store $old -WhatIf:$WhatIf) }
     $bg = $null
     if (Use-Step 'apps') { $bg = Start-BackgroundApps } else { Send-Event STEP 'apps skipped' }
-    Invoke-Phase 'files'    "Files from \\$From ($(@($m.Plan).Count) chunks)" {
+    Invoke-Phase 'files'    "Files from the old PC ($(@($m.Plan).Count) chunks)" {
         $notes.CopyFailed = @(Copy-Plan $m.Plan $From $old @($m.Excludes) $Store $Speed { Test-BackgroundApps $bg } -Recopy:$Recopy -WhatIf:$WhatIf)
         $notes.JunctionFailed = @(Restore-Junctions $m.Junctions $old -WhatIf:$WhatIf)
         # Not "done" while chunks failed: the next start copies only those again.
@@ -339,6 +330,11 @@ function Invoke-Import {
 
 function Invoke-Cleanup {
     Assert-Admin
+    if (Get-NetFirewallRule -Group 'Hopover' -ErrorAction SilentlyContinue) {
+        Remove-NetFirewallRule -Group 'Hopover' -ErrorAction SilentlyContinue
+        Write-Note 'removed the Hopover firewall rules'
+    }
+    # Shares from an older Hopover version, if any.
     Get-SmbShare -Name 'hopover-*' -ErrorAction SilentlyContinue | ForEach-Object {
         Remove-SmbShare -Name $_.Name -Force
         Write-Note "removed share $($_.Name)"

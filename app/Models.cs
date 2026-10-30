@@ -142,6 +142,16 @@ namespace Hopover.App
             catch { return null; }
         }
 
+        public static object Parse(byte[] utf8)
+        {
+            try
+            {
+                string text = Encoding.UTF8.GetString(utf8).Trim('\uFEFF', ' ', '\r', '\n', '\t');
+                return text.Length == 0 ? null : Ser.DeserializeObject(text);
+            }
+            catch { return null; }
+        }
+
         public static void Write(string path, object value)
         {
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));

@@ -33,6 +33,7 @@ namespace Hopover
     {
         public int Index;
         public string Path;
+        public string Exe;          // null = robocopy.exe; the link copy sets Hopover.exe
         public string Arguments;
         public long Planned;
         public int ExitCode = -1;
@@ -101,7 +102,7 @@ namespace Hopover
 
         void Run(RoboJob j)
         {
-            ProcessStartInfo psi = new ProcessStartInfo("robocopy.exe", j.Arguments);
+            ProcessStartInfo psi = new ProcessStartInfo(j.Exe ?? "robocopy.exe", j.Arguments);
             psi.UseShellExecute = false;
             psi.RedirectStandardOutput = true;
             psi.RedirectStandardError = true;

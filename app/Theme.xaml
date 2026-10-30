@@ -169,10 +169,10 @@
     <Setter Property="FontSize" Value="11"/>
     <Setter Property="Foreground" Value="{StaticResource Steel}"/>
   </Style>
-  <!-- Stencil: units, crate labels, stamps. -->
+  <!-- Labels: Martian Mono semibold, upper case. The narrow Anybody stays at 40 px and up. -->
   <Style x:Key="StencilText" TargetType="TextBlock">
-    <Setter Property="FontFamily" Value="{StaticResource Stencil}"/>
-    <Setter Property="FontSize" Value="15"/>
+    <Setter Property="FontFamily" Value="{StaticResource MonoSemi}"/>
+    <Setter Property="FontSize" Value="12"/>
   </Style>
 
   <!-- Surfaces -->

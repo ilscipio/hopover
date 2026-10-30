@@ -56,8 +56,8 @@
 
     <!-- A stamp: stencil letters in a frame. -->
     <Style x:Key="StampText" TargetType="TextBlock">
-      <Setter Property="FontFamily" Value="{StaticResource StencilBlack}"/>
-      <Setter Property="FontSize" Value="17"/>
+      <Setter Property="FontFamily" Value="{StaticResource MonoSemi}"/>
+      <Setter Property="FontSize" Value="13"/>
       <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
 
@@ -145,20 +145,22 @@
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
           </Grid.RowDefinitions>
-          <TextBlock FontFamily="{StaticResource DisplayBlack}" FontSize="88" LineHeight="80" LineStackingStrategy="BlockLineHeight">
+          <TextBlock FontFamily="{StaticResource DisplayBlack}" FontSize="72" LineHeight="66" LineStackingStrategy="BlockLineHeight">
             <Run Text="Free to"/><LineBreak/><Run Text="move."/>
           </TextBlock>
-          <Border Grid.Row="1" Background="{StaticResource Signal}" HorizontalAlignment="Left" Margin="-2,14,0,0" Padding="10,0,10,2">
+          <Border Grid.Row="1" Background="{StaticResource Signal}" HorizontalAlignment="Left" Margin="-2,10,0,0" Padding="10,0,10,2">
             <TextBlock Text="PAY ON DELIVERY." FontFamily="{StaticResource Stencil}" FontSize="48"/>
           </Border>
-          <StackPanel Grid.Row="2" Margin="0,32,0,0" MaxWidth="540" HorizontalAlignment="Left">
-            <TextBlock Style="{StaticResource Dim}" FontSize="18" LineHeight="28" Foreground="{StaticResource Ink2}"
-                       Text="Hopover is free, and its source is available. Read every line before it touches your PC."/>
-            <TextBlock Style="{StaticResource Dim}" FontSize="18" LineHeight="28" Margin="0,12,0,0"
-                       Text="Here is the deal. If your move works, you buy me one coffee. If it fails, you owe me nothing. Send me the log and I fix it."/>
+          <StackPanel Grid.Row="2" Margin="0,26,0,0" MaxWidth="560" HorizontalAlignment="Left">
+            <TextBlock Style="{StaticResource Dim}" FontSize="16" LineHeight="23"
+                       Text="Hi, Paul here. I built Hopover because no tool would move my whole dev PC - WSL, SSH keys, env vars and all. So go ahead and use it. Free. Every feature, no trial, no locked buttons."/>
+            <TextBlock Style="{StaticResource Dim}" FontSize="16" LineHeight="23" Margin="0,10,0,0"
+                       Text="The catch: you promise me a coffee at the end, once your move works. Pay what you want. A promise is a promise, so I will remind you once halfway through your files, and again at the end. Politely. With a very big button."/>
+            <TextBlock Style="{StaticResource Dim}" FontSize="16" LineHeight="23" Margin="0,10,0,0"
+                       Text="If it fails, you owe me nothing - not even the coffee. Send me the log and I'll fix it."/>
           </StackPanel>
           <StackPanel Grid.Row="4" Orientation="Horizontal">
-            <Button x:Name="BtnDeal" Style="{StaticResource Primary}" Content="Deal. Choose the PCs" MinWidth="360" IsEnabled="False"/>
+            <Button x:Name="BtnDeal" Style="{StaticResource Primary}" Content="Deal. Let's go" MinWidth="360" IsEnabled="False"/>
             <Button x:Name="BtnSource" Style="{StaticResource Ghost}" Content="Read the source first" Margin="28,0,0,0" FontSize="16"/>
           </StackPanel>
         </Grid>
@@ -172,7 +174,7 @@
             <StackPanel>
               <StackPanel Margin="26,22,26,18">
                 <Grid>
-                  <TextBlock Text="FREIGHT TICKET" FontFamily="{StaticResource StencilBlack}" FontSize="24"/>
+                  <TextBlock Text="FREIGHT TICKET" FontFamily="{StaticResource MonoSemi}" FontSize="13"/>
                   <TextBlock x:Name="TicketNo" Style="{StaticResource Eyebrow}" Foreground="{StaticResource Ink}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                 </Grid>
                 <Grid Margin="0,14,0,0">
@@ -204,12 +206,13 @@
               </Grid>
               <StackPanel Margin="26,14,26,24">
                 <Grid>
-                  <TextBlock Text="COFFEE COUPON · DUE ON DELIVERY" FontFamily="{StaticResource StencilBlack}" FontSize="19" VerticalAlignment="Center"/>
+                  <TextBlock Text="COFFEE COUPON · DUE ON DELIVERY" FontFamily="{StaticResource MonoSemi}" FontSize="13" VerticalAlignment="Center"/>
                   <Image Source="{StaticResource Cup}" Width="34" Height="34" HorizontalAlignment="Right"/>
                 </Grid>
                 <CheckBox x:Name="PledgeCheck" Margin="0,14,0,0">
                   <TextBlock x:Name="PledgeText" TextWrapping="Wrap" FontFamily="{StaticResource BodySemi}" FontSize="16" LineHeight="22"/>
                 </CheckBox>
+                <TextBlock x:Name="PriceNote" FontFamily="{StaticResource MonoSemi}" FontSize="12" Foreground="{StaticResource Steel}" Margin="34,8,0,0"/>
                 <Grid Margin="0,14,0,0">
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -224,10 +227,14 @@
             </StackPanel>
           </Border>
           <StackPanel VerticalAlignment="Bottom" Margin="50,0,50,40">
-            <TextBlock Text="No account. No trial clock. No reminder before you see a result." Style="{StaticResource Eyebrow}" Foreground="{StaticResource Light}" TextWrapping="Wrap" LineHeight="19"/>
+            <TextBlock Text="No account, no trial. Hopover can't even check if you paid - it runs on trust and a little guilt ;)" Style="{StaticResource Eyebrow}" Foreground="{StaticResource Light}" TextWrapping="Wrap" LineHeight="19"/>
             <TextBlock x:Name="LicenceLine" Style="{StaticResource Eyebrow}" Foreground="{StaticResource Light}" TextWrapping="Wrap" LineHeight="19" Margin="0,8,0,0"/>
           </StackPanel>
         </Grid>
+        <Canvas x:Name="ArrowLayer" Grid.ColumnSpan="2" IsHitTestVisible="False" Visibility="Collapsed">
+          <Path x:Name="ArrowPath" Stroke="{StaticResource Signal}" StrokeThickness="3" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+          <TextBlock x:Name="ArrowLabel" Text="Tick this first ;)" FontFamily="{StaticResource BodySemi}" FontSize="16" Foreground="{StaticResource Ink}"/>
+        </Canvas>
       </Grid>
 
       <!-- ============ Start ============ -->
@@ -239,7 +246,7 @@
             <Run Text="Move to your"/><LineBreak/><Run Text="new PC. "/><Run Text="All of it." Foreground="{StaticResource Rust}"/>
           </TextBlock>
           <TextBlock Style="{StaticResource Dim}" FontSize="17" LineHeight="26" MaxWidth="640" HorizontalAlignment="Left" Margin="0,18,0,0"
-                     Text="Apps, files, SSH keys, WSL, Windows and app settings, scheduled tasks. Both PCs stay on in the same network. The old PC only shares: nothing on it changes."/>
+                     Text="Apps, files, SSH keys, WSL, settings, scheduled tasks - all of it. Both PCs stay on in the same network, and the old PC only shares. Nothing on it changes."/>
 
           <UniformGrid Columns="2" Margin="-10,32,-10,0">
             <Button x:Name="BtnOld" Style="{StaticResource ChoiceCard}" Margin="10">
@@ -247,7 +254,7 @@
                 <TextBlock Text="CRATE A · FROM" Style="{StaticResource Eyebrow}"/>
                 <TextBlock Text="This is the old PC" FontFamily="{StaticResource Display}" FontSize="28" Margin="0,10,0,6"/>
                 <TextBlock Style="{StaticResource Dim}" Text="Scan it, choose what moves, and share it read-only with the new PC."/>
-                <TextBlock Text="SCAN AND SHARE  →" FontFamily="{StaticResource Stencil}" FontSize="19" Margin="0,18,0,0"/>
+                <TextBlock Text="SCAN AND SHARE  →" FontFamily="{StaticResource MonoSemi}" FontSize="13" Margin="0,18,0,0"/>
               </StackPanel>
             </Button>
             <Button x:Name="BtnNew" Style="{StaticResource ChoiceCard}" Margin="10">
@@ -255,14 +262,14 @@
                 <TextBlock Text="CRATE B · TO" Style="{StaticResource Eyebrow}"/>
                 <TextBlock Text="This is the new PC" FontFamily="{StaticResource Display}" FontSize="28" Margin="0,10,0,6"/>
                 <TextBlock Style="{StaticResource Dim}" Text="Connect to the old PC and bring everything over. You can use this PC while it works."/>
-                <TextBlock Text="CONNECT AND MOVE  →" FontFamily="{StaticResource Stencil}" FontSize="19" Margin="0,18,0,0"/>
+                <TextBlock Text="CONNECT AND MOVE  →" FontFamily="{StaticResource MonoSemi}" FontSize="13" Margin="0,18,0,0"/>
               </StackPanel>
             </Button>
           </UniformGrid>
 
           <Border x:Name="ResumeBanner" Visibility="Collapsed" BorderBrush="{StaticResource Rust}" BorderThickness="3" Padding="16,10" Margin="0,16,0,0" HorizontalAlignment="Left">
             <StackPanel Orientation="Horizontal">
-              <TextBlock Text="UNFINISHED" FontFamily="{StaticResource StencilBlack}" FontSize="22" Foreground="{StaticResource RustDark}" VerticalAlignment="Center"/>
+              <TextBlock Text="UNFINISHED" FontFamily="{StaticResource MonoSemi}" FontSize="13" Foreground="{StaticResource RustDark}" VerticalAlignment="Center"/>
               <TextBlock Margin="16,0,0,0" Foreground="{StaticResource RustDark}" TextWrapping="Wrap" VerticalAlignment="Center" MaxWidth="760"
                          Text="A move on this PC did not finish. Choose 'This is the new PC': done steps are skipped and the copy goes on where it stopped."/>
             </StackPanel>
@@ -320,9 +327,9 @@
                         <TextBlock x:Name="nm" Text="{Binding Name}" FontFamily="{StaticResource BodySemi}" FontSize="17" TextTrimming="CharacterEllipsis"/>
                         <TextBlock Text="{Binding Sub}" Style="{StaticResource Eyebrow}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0"/>
                       </StackPanel>
-                      <TextBlock x:Name="wt" Grid.Column="3" Text="{Binding SizeText}" FontFamily="{StaticResource Stencil}" FontSize="26" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,18,0"/>
+                      <TextBlock x:Name="wt" Grid.Column="3" Text="{Binding SizeText}" FontFamily="{StaticResource MonoSemi}" FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,18,0"/>
                       <Border x:Name="stamp" Grid.Column="4" Height="34" Padding="12,0" HorizontalAlignment="Left" VerticalAlignment="Center" BorderBrush="{StaticResource Ink}" BorderThickness="1.5">
-                        <TextBlock x:Name="st" Text="LOADED" Style="{StaticResource StampText}" FontSize="16"/>
+                        <TextBlock x:Name="st" Text="LOADED" Style="{StaticResource StampText}" FontSize="13"/>
                       </Border>
                     </Grid>
                     <DataTemplate.Triggers>
@@ -393,7 +400,7 @@
             <StackPanel>
               <h:HopLoader Width="420" Height="98" HorizontalAlignment="Left"/>
               <TextBlock Text="Saving the app list, settings, tasks and WSL" Style="{StaticResource H2}" Margin="0,14,0,0"/>
-              <TextBlock Style="{StaticResource Dim}" Margin="0,4,0,0" Text="WSL distros stop while they are saved. Then Hopover shares this PC read-only with your user."/>
+              <TextBlock Style="{StaticResource Dim}" Margin="0,4,0,0" Text="WSL distros stop while they are saved. Then Hopover shows a pairing code for the new PC."/>
             </StackPanel>
           </Border>
           <Border x:Name="ShareCard" Style="{StaticResource Card}" Visibility="Collapsed" Padding="28">
@@ -408,43 +415,26 @@
                   <TextBlock x:Name="ShareWhere" Style="{StaticResource Dim}" Margin="0,6,0,0"/>
                 </StackPanel>
                 <Border Grid.Column="1" BorderBrush="{StaticResource Ink}" BorderThickness="3" Padding="12,0" VerticalAlignment="Top" Margin="20,0,0,0">
-                  <TextBlock Text="DELIVERED" FontFamily="{StaticResource StencilBlack}" FontSize="28"/>
+                  <TextBlock Text="DELIVERED" FontFamily="{StaticResource MonoSemi}" FontSize="13"/>
                 </Border>
               </Grid>
-              <Grid Margin="0,22,0,0">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <Border BorderBrush="{StaticResource Ink}" BorderThickness="0,2,0,0" Padding="0,8,12,0" Margin="0,0,16,0">
-                  <StackPanel>
-                    <DockPanel>
-                      <Button x:Name="BtnCopyPc" DockPanel.Dock="Right" Style="{StaticResource Ghost}" Content="COPY" FontFamily="{StaticResource Stencil}" FontSize="14"/>
-                      <TextBlock Text="PC NAME" Style="{StaticResource Eyebrow}" VerticalAlignment="Center"/>
-                    </DockPanel>
-                    <TextBlock x:Name="SharePc" FontFamily="{StaticResource Display}" FontSize="19" TextTrimming="CharacterEllipsis" Margin="0,4,0,0"/>
-                  </StackPanel>
+              <Border BorderBrush="{StaticResource Ink}" BorderThickness="0,2,0,0" Padding="0,10,0,0" Margin="0,22,0,0">
+                <StackPanel>
+                  <DockPanel>
+                    <Button x:Name="BtnCopyCode" DockPanel.Dock="Right" Style="{StaticResource Ghost}" Content="COPY" FontFamily="{StaticResource MonoSemi}" FontSize="13"/>
+                    <TextBlock Text="PAIRING CODE" Style="{StaticResource Eyebrow}" VerticalAlignment="Center"/>
+                  </DockPanel>
+                  <TextBlock x:Name="LinkCode" FontFamily="{StaticResource Display}" FontSize="40" TextTrimming="CharacterEllipsis" Margin="0,6,0,0"/>
+                </StackPanel>
+              </Border>
+              <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
+                <Border x:Name="LinkBadge" BorderBrush="{StaticResource Ink}" BorderThickness="2" Padding="10,2" VerticalAlignment="Center">
+                  <TextBlock x:Name="LinkBadgeText" Text="WAITING FOR THE NEW PC" FontFamily="{StaticResource MonoSemi}" FontSize="13"/>
                 </Border>
-                <Border Grid.Column="1" BorderBrush="{StaticResource Ink}" BorderThickness="0,2,0,0" Padding="0,8,12,0" Margin="0,0,16,0">
-                  <StackPanel>
-                    <DockPanel>
-                      <Button x:Name="BtnCopyIp" DockPanel.Dock="Right" Style="{StaticResource Ghost}" Content="COPY" FontFamily="{StaticResource Stencil}" FontSize="14"/>
-                      <TextBlock Text="IP ADDRESS" Style="{StaticResource Eyebrow}" VerticalAlignment="Center"/>
-                    </DockPanel>
-                    <TextBlock x:Name="ShareIp" FontFamily="{StaticResource Display}" FontSize="19" TextTrimming="CharacterEllipsis" Margin="0,4,0,0"/>
-                  </StackPanel>
-                </Border>
-                <Border Grid.Column="2" BorderBrush="{StaticResource Ink}" BorderThickness="0,2,0,0" Padding="0,8,0,0">
-                  <StackPanel>
-                    <DockPanel>
-                      <Button x:Name="BtnCopyUser" DockPanel.Dock="Right" Style="{StaticResource Ghost}" Content="COPY" FontFamily="{StaticResource Stencil}" FontSize="14"/>
-                      <TextBlock Text="USER" Style="{StaticResource Eyebrow}" VerticalAlignment="Center"/>
-                    </DockPanel>
-                    <TextBlock x:Name="ShareUser" FontFamily="{StaticResource Display}" FontSize="19" TextTrimming="CharacterEllipsis" Margin="0,4,0,0"/>
-                  </StackPanel>
-                </Border>
-              </Grid>
-              <TextBlock Style="{StaticResource Dim}" Margin="0,18,0,0" Text="Leave this PC on until the new PC says Done. The password is your Windows password here (with a Microsoft account: that password, not the PIN)."/>
-              <Button x:Name="BtnStopShare" Content="Stop sharing (after the move)" HorizontalAlignment="Left" Margin="0,18,0,0"/>
+                <TextBlock x:Name="LinkPeer" Style="{StaticResource Dim}" VerticalAlignment="Center" Margin="14,0,0,0"/>
+              </StackPanel>
+              <TextBlock Style="{StaticResource Dim}" Margin="0,18,0,0" Text="Leave this PC on until the new PC says Done. The code works for one try: a wrong guess makes a new code. No Windows password is needed. Files travel straight between the two PCs, encrypted."/>
+              <Button x:Name="BtnStopShare" Content="Stop the link (after the move)" HorizontalAlignment="Left" Margin="0,18,0,0"/>
             </StackPanel>
           </Border>
           <Button x:Name="BtnExportLog" Grid.Row="1" Style="{StaticResource Ghost}" Content="Show details" HorizontalAlignment="Left" Margin="0,10,0,6"/>
@@ -461,28 +451,26 @@
         <StackPanel Width="800" HorizontalAlignment="Left" Margin="56,36,0,36">
           <TextBlock Text="NEW PC  ·  STEP 1 OF 2" Style="{StaticResource Eyebrow}"/>
           <TextBlock Text="Connect to the old PC" Style="{StaticResource H1}" Margin="0,8,0,8"/>
-          <TextBlock Style="{StaticResource Dim}" Text="The old PC shows its name, IP address and user after 'Prepare the move'."/>
+          <TextBlock Style="{StaticResource Dim}" Text="The old PC shows a pairing code after 'Prepare the move'. Type it here."/>
           <Border Style="{StaticResource Card}" Margin="0,20,0,0">
             <StackPanel>
-              <TextBlock Text="OLD PC NAME OR IP ADDRESS" Style="{StaticResource Eyebrow}" Margin="0,0,0,6"/>
-              <TextBox x:Name="FromBox"/>
-              <Grid Margin="0,16,0,0">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel>
-                  <TextBlock Text="USER ON THE OLD PC" Style="{StaticResource Eyebrow}" Margin="0,0,0,6"/>
-                  <TextBox x:Name="UserBox"/>
-                </StackPanel>
-                <StackPanel Grid.Column="2">
-                  <TextBlock Text="PASSWORD" Style="{StaticResource Eyebrow}" Margin="0,0,0,6"/>
-                  <PasswordBox x:Name="PwBox"/>
-                </StackPanel>
-              </Grid>
+              <TextBlock Text="WHERE IS THE OLD PC" Style="{StaticResource Eyebrow}" Margin="0,0,0,10"/>
+              <Border BorderBrush="{StaticResource Ink}" BorderThickness="2" HorizontalAlignment="Left" Width="460">
+                <UniformGrid Columns="2">
+                  <RadioButton x:Name="ModeLan" GroupName="linkmode" Style="{StaticResource Segment}" Content="Same network" IsChecked="True" MinWidth="170"/>
+                  <RadioButton x:Name="ModeNet" GroupName="linkmode" Style="{StaticResource Segment}" Content="Over the internet" MinWidth="170"/>
+                </UniformGrid>
+              </Border>
+              <TextBlock x:Name="ModeHint" Style="{StaticResource Dim}" FontSize="13" LineHeight="19" Margin="0,10,0,0"/>
+              <TextBlock Text="PAIRING CODE" Style="{StaticResource Eyebrow}" Margin="0,18,0,6"/>
+              <TextBox x:Name="CodeBox" FontFamily="{StaticResource Display}" FontSize="26"/>
               <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
                 <Button x:Name="BtnConnect" Content="Connect" MinWidth="140"/>
                 <h:HazardBar x:Name="ConnectSpin" Width="70" Height="10" Period="12" Margin="16,0,0,0" Visibility="Collapsed"/>
-                <TextBlock x:Name="ConnectText" VerticalAlignment="Center" Margin="14,0,0,0" TextWrapping="Wrap" MaxWidth="520"/>
+                <Border x:Name="ConnectBadge" BorderBrush="{StaticResource Ink}" BorderThickness="2" Padding="10,2" Margin="16,0,0,0" VerticalAlignment="Center" Visibility="Collapsed">
+                  <TextBlock x:Name="ConnectBadgeText" FontFamily="{StaticResource MonoSemi}" FontSize="13"/>
+                </Border>
+                <TextBlock x:Name="ConnectText" VerticalAlignment="Center" Margin="14,0,0,0" TextWrapping="Wrap" MaxWidth="460"/>
               </StackPanel>
             </StackPanel>
           </Border>
@@ -572,7 +560,7 @@
           <Border x:Name="DoneCard" Style="{StaticResource Card}" Visibility="Collapsed" Padding="28">
             <StackPanel>
               <Border x:Name="DoneStamp" BorderBrush="{StaticResource Rust}" BorderThickness="3" Padding="12,0" HorizontalAlignment="Left">
-                <TextBlock x:Name="DoneStampText" Text="STOPPED" FontFamily="{StaticResource StencilBlack}" FontSize="28" Foreground="{StaticResource RustDark}"/>
+                <TextBlock x:Name="DoneStampText" Text="STOPPED" FontFamily="{StaticResource MonoSemi}" FontSize="13" Foreground="{StaticResource RustDark}"/>
               </Border>
               <TextBlock x:Name="DoneTitle" Text="The move stopped" FontFamily="{StaticResource Display}" FontSize="26" TextWrapping="Wrap" Margin="0,14,0,0"/>
               <TextBlock x:Name="DoneText" Style="{StaticResource Dim}" Margin="0,4,0,0"/>
@@ -598,9 +586,9 @@
                       <Border Grid.ColumnSpan="4" BorderBrush="{StaticResource Ink}" BorderThickness="0,0,0,1"/>
                       <TextBlock Text="{Binding Code}" Style="{StaticResource Eyebrow}" VerticalAlignment="Center"/>
                       <TextBlock Grid.Column="1" Text="{Binding Path}" FontSize="14" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                      <TextBlock Grid.Column="2" Text="{Binding SizeText}" FontFamily="{StaticResource Stencil}" FontSize="22" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,14,0"/>
+                      <TextBlock Grid.Column="2" Text="{Binding SizeText}" FontFamily="{StaticResource MonoSemi}" FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,14,0"/>
                       <Border Grid.Column="3" Height="30" Padding="10,0" HorizontalAlignment="Left" VerticalAlignment="Center" Background="{StaticResource Signal}">
-                        <TextBlock Text="IN TRANSIT" Style="{StaticResource StampText}" FontSize="15"/>
+                        <TextBlock Text="IN TRANSIT" Style="{StaticResource StampText}" FontSize="13"/>
                       </Border>
                     </Grid>
                   </DataTemplate>
@@ -629,7 +617,7 @@
             <Run Text="Take one for"/><LineBreak/><Run Text="a test drive."/>
           </TextBlock>
           <TextBlock Style="{StaticResource Dim}" FontSize="17" LineHeight="26" MaxWidth="500" HorizontalAlignment="Left" Margin="0,16,0,24"
-                     Text="These apps are on the new PC now. Open one and check that it still knows you. The truck keeps driving while you look."/>
+                     Text="These apps already made it over. Open one and check that it still remembers you - the copy keeps going in the background."/>
           <Border BorderBrush="{StaticResource Ink}" BorderThickness="0,2,0,0">
             <ItemsControl x:Name="CheckApps">
               <ItemsControl.ItemTemplate>
@@ -659,7 +647,7 @@
 
         <Grid x:Name="CheckNote" Grid.Column="1" Width="520" Background="{StaticResource Ink}" ClipToBounds="True">
           <StackPanel Margin="48,48,48,0">
-            <TextBlock Text="A NOTE FROM THE DRIVER" Style="{StaticResource Eyebrow}" Foreground="{StaticResource Light}"/>
+            <TextBlock Text="A QUICK NOTE FROM PAUL" Style="{StaticResource Eyebrow}" Foreground="{StaticResource Light}"/>
             <TextBlock Margin="0,14,0,0" Foreground="{StaticResource Bg}" TextWrapping="Wrap" FontFamily="{StaticResource DisplayBlack}" FontSize="32" LineHeight="34" LineStackingStrategy="BlockLineHeight">
               <Run Text="Your apps made it."/><LineBreak/><Run Text="So did your promise."/>
             </TextBlock>
@@ -669,7 +657,7 @@
                 <Border.RenderTransform><RotateTransform Angle="3"/></Border.RenderTransform>
                 <Border.Effect><DropShadowEffect BlurRadius="34" ShadowDepth="20" Direction="270" Opacity="0.7" Color="Black"/></Border.Effect>
                 <StackPanel>
-                  <TextBlock Text="COFFEE COUPON · DUE ON DELIVERY" FontFamily="{StaticResource StencilBlack}" FontSize="16"/>
+                  <TextBlock Text="COFFEE COUPON · DUE ON DELIVERY" FontFamily="{StaticResource MonoSemi}" FontSize="13"/>
                   <TextBlock x:Name="NoteQuote" FontSize="14" TextWrapping="Wrap" Margin="0,8,0,0"/>
                   <TextBlock x:Name="NoteSigned" Style="{StaticResource Eyebrow}" Margin="0,8,0,0"/>
                 </StackPanel>
@@ -677,13 +665,13 @@
               <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-10,-30" Background="#EB111213" BorderBrush="{StaticResource Signal}" BorderThickness="3" Padding="10,0"
                       RenderTransformOrigin="0.5,0.5">
                 <Border.RenderTransform><RotateTransform Angle="-12"/></Border.RenderTransform>
-                <TextBlock Text="STILL IN THE TRUCK" FontFamily="{StaticResource StencilBlack}" FontSize="22" Foreground="{StaticResource Signal}"/>
+                <TextBlock Text="STILL IN THE TRUCK" FontFamily="{StaticResource MonoSemi}" FontSize="13" Foreground="{StaticResource Signal}"/>
               </Border>
             </Grid>
           </StackPanel>
           <StackPanel VerticalAlignment="Bottom" Margin="48,0,48,44">
-            <Button x:Name="BtnPayNow" Style="{StaticResource OnInk}" Content="Pay the coffee now"/>
-            <Button x:Name="BtnPayLater" Style="{StaticResource GhostOnInk}" Content="At delivery. I keep my promises." Margin="0,10,0,0" Height="44"/>
+            <Button x:Name="BtnPayNow" Style="{StaticResource OnInk}" Content="Buy the coffee now"/>
+            <Button x:Name="BtnPayLater" Style="{StaticResource GhostOnInk}" Content="Later - when it's all done" Margin="0,10,0,0" Height="44"/>
           </StackPanel>
         </Grid>
       </Grid>
@@ -703,7 +691,7 @@
             <Border Background="{StaticResource Paper}" Padding="28,26,28,34">
               <StackPanel>
                 <Grid>
-                  <TextBlock Text="DELIVERY RECEIPT" FontFamily="{StaticResource StencilBlack}" FontSize="22"/>
+                  <TextBlock Text="DELIVERY RECEIPT" FontFamily="{StaticResource MonoSemi}" FontSize="13"/>
                   <TextBlock x:Name="ReceiptNo" Style="{StaticResource Eyebrow}" Foreground="{StaticResource Ink}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                 </Grid>
                 <Rectangle Height="1.5" Fill="{StaticResource Ink}" Margin="0,10,0,0"/>
@@ -722,7 +710,7 @@
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
                 <Grid Margin="0,14,0,0">
-                  <TextBlock x:Name="ReceiptOpenLabel" Text="STILL OPEN" FontFamily="{StaticResource StencilBlack}" FontSize="17" VerticalAlignment="Center"/>
+                  <TextBlock x:Name="ReceiptOpenLabel" Text="STILL OPEN" FontFamily="{StaticResource MonoSemi}" FontSize="13" VerticalAlignment="Center"/>
                   <TextBlock x:Name="ReceiptOpenValue" Text="1 coffee" FontFamily="{StaticResource Display}" FontSize="20" HorizontalAlignment="Right"/>
                 </Grid>
               </StackPanel>
@@ -749,7 +737,7 @@
           </TextBlock>
           <StackPanel x:Name="PaulBlock" Grid.Row="1" Margin="0,22,0,0" MaxWidth="580" HorizontalAlignment="Left">
             <TextBlock x:Name="PaulLine" Text="I was told people hate subscriptions. This is me hoping you return the favor." FontSize="21" LineHeight="30" TextWrapping="Wrap"/>
-            <TextBlock Text="— PAUL, WHO WROTE HOPOVER" Style="{StaticResource Eyebrow}" FontSize="12" Margin="0,8,0,0"/>
+            <TextBlock Text="- PAUL" Style="{StaticResource Eyebrow}" FontSize="12" Margin="0,8,0,0"/>
           </StackPanel>
           <Button x:Name="BtnCoffee" Grid.Row="2" Style="{StaticResource CoffeeBig}" Height="196" Margin="0,28,0,0">
             <Grid>
@@ -761,9 +749,9 @@
           </Button>
           <Border x:Name="ThanksBlock" Grid.Row="2" Margin="0,28,0,0" Visibility="Collapsed" BorderBrush="{StaticResource Ink}" BorderThickness="0,2,0,0" Padding="0,16,0,0">
             <StackPanel>
-              <TextBlock Text="Thank you for the coffee." FontFamily="{StaticResource DisplayBlack}" FontSize="40" LineHeight="40" LineStackingStrategy="BlockLineHeight"/>
+              <TextBlock Text="Thanks for the coffee - genuinely. You made my day :)" FontFamily="{StaticResource DisplayBlack}" FontSize="30" LineHeight="34" LineStackingStrategy="BlockLineHeight" TextWrapping="Wrap"/>
               <TextBlock Style="{StaticResource Dim}" FontSize="17" LineHeight="26" Margin="0,10,0,0" MaxWidth="560" HorizontalAlignment="Left"
-                         Text="It arrived. Enjoy the new PC. If something breaks later, send me the log."/>
+                         Text="Enjoy the new PC! And if something breaks later, send me the log and I'll take a look."/>
             </StackPanel>
           </Border>
           <StackPanel Grid.Row="4" VerticalAlignment="Bottom">
@@ -773,7 +761,7 @@
                 <ColumnDefinition Width="*"/>
               </Grid.ColumnDefinitions>
               <Button x:Name="BtnReview" Content="Leave a review" Height="52" FontSize="16"/>
-              <TextBlock Grid.Column="1" Text="Two lines help the next person trust a free tool." Style="{StaticResource Dim}" VerticalAlignment="Center" Margin="22,0,0,0"/>
+              <TextBlock Grid.Column="1" Text="And if you have two minutes: a review helps tremendously." Style="{StaticResource Dim}" VerticalAlignment="Center" Margin="22,0,0,0"/>
             </Grid>
             <WrapPanel Margin="0,10,0,0">
               <Button x:Name="BtnDoneChecklist" Style="{StaticResource Ghost}" Content="Open the checklist" Margin="0,0,22,0"/>
@@ -808,7 +796,7 @@
             <ListBox.ItemTemplate>
               <DataTemplate>
                 <Grid>
-                  <TextBlock x:Name="head" Text="{Binding Text}" Style="{StaticResource StencilText}" FontSize="17" Foreground="{StaticResource RustDark}" Margin="0,14,0,4" Visibility="Collapsed"/>
+                  <TextBlock x:Name="head" Text="{Binding Text}" Style="{StaticResource StencilText}" FontSize="13" Foreground="{StaticResource RustDark}" Margin="0,14,0,4" Visibility="Collapsed"/>
                   <CheckBox x:Name="item" IsChecked="{Binding Done, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Top" Margin="0,8">
                     <StackPanel>
                       <TextBlock x:Name="itemText" Text="{Binding Text}" TextWrapping="Wrap" FontSize="15"/>

@@ -13,7 +13,7 @@ namespace Hopover.App
     /// </summary>
     static class Screenshots
     {
-        static readonly string[] Pages = { "pledge", "welcome", "scan", "share", "connect", "import", "checkpoint", "done", "done-paid" };
+        static readonly string[] Pages = { "pledge", "welcome", "scan", "share", "connect", "import", "checkpoint", "done", "done-paid", "pledge-signed", "share-waiting", "connect-noroute" };
 
         public static void Run(Application app, string dir)
         {
@@ -41,12 +41,12 @@ namespace Hopover.App
             try
             {
                 // Sample pledge state: unsigned only on the pledge shot, paid only on the thank-you shot.
-                Pledge.Signed = Pages[i] != "pledge";
+                Pledge.Signed = !Pages[i].StartsWith("pledge");
                 Pledge.SignedAt = "2026-10-30 09:14";
                 Pledge.Paid = Pages[i] == "done-paid";
                 var c = new MainController("", "");
                 if (Pages[i] != "welcome") c.Demo(Pages[i]);
-                Shoot(c.Window, Path.Combine(dir, (i + 1) + "-" + Pages[i] + ".png"), () =>
+                Shoot(c.Window, Path.Combine(dir, (Pages[i] == "pledge-signed" ? "1b" : (i + 1).ToString()) + "-" + Pages[i] + ".png"), () =>
                 {
                     c.Window.Close();
                     Next(app, dir, i + 1);

@@ -74,14 +74,17 @@ $resources = @(
 ) + @(Get-ChildItem "$Root\lib\*.ps1" | ForEach-Object { "$($_.FullName),engine/lib/$($_.Name)" }) +
     @(Get-ChildItem "$App\fonts\*.ttf" | ForEach-Object { "$($_.FullName),fonts/$($_.Name)" })
 $refs = @("$ref\mscorlib.dll", "$ref\System.dll", "$ref\System.Core.dll", "$ref\System.Xml.dll", "$ref\System.Xaml.dll",
-          "$ref\System.Web.Extensions.dll", "$wpf\WindowsBase.dll", "$wpf\PresentationCore.dll", "$wpf\PresentationFramework.dll")
+          "$ref\System.Web.Extensions.dll", "$ref\System.Numerics.dll", "$wpf\WindowsBase.dll", "$wpf\PresentationCore.dll", "$wpf\PresentationFramework.dll")
 $out = Join-Path $Dist 'Hopover.exe'
 $rsp = Join-Path $Obj 'csc.rsp'
+# Paths over 260 characters work in .NET Framework only when the assembly says it targets 4.6.2 or later.
+$tfm = Join-Path $Obj 'TargetFramework.cs'
+'[assembly: System.Runtime.Versioning.TargetFramework(".NETFramework,Version=v4.8")]' | Set-Content $tfm -Encoding ASCII
 @(
     '/nologo', '/nostdlib+', '/target:winexe', '/platform:anycpu', '/optimize+', '/langversion:7.3',
     '/utf8output', '/warn:4', "/out:`"$out`"", "/win32icon:`"$ico`"", "/win32manifest:`"$App\app.manifest`""
 ) + ($refs | ForEach-Object { "/reference:`"$_`"" }) + ($resources | ForEach-Object { "/resource:`"$($_.Split(',')[0])`",$($_.Split(',')[1])" }) +
-  (Get-ChildItem "$App\*.cs" | ForEach-Object { "`"$($_.FullName)`"" }) | Set-Content $rsp -Encoding UTF8
+  (Get-ChildItem "$App\*.cs", "$App\Link\*.cs" | ForEach-Object { "`"$($_.FullName)`"" }) + "`"$tfm`"" | Set-Content $rsp -Encoding UTF8
 & $csc.FullName /noconfig "@$rsp"
 if ($LASTEXITCODE -ne 0) { throw "compile failed ($LASTEXITCODE)" }
 Write-Host ("built {0} ({1:N0} KB)" -f $out, ((Get-Item $out).Length / 1KB)) -ForegroundColor Green

@@ -14,6 +14,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Shell;
 using System.Text.RegularExpressions;
+using Hopover.Link;
 
 namespace Hopover.App
 {
@@ -65,6 +66,9 @@ namespace Hopover.App
         string lastRouteText = "";
         string returnPage = "PageImport";
         string from;
+        EngineRun serve;                 // old PC: Hopover.exe --link serve
+        MuxProxy proxy;                  // new PC: the authenticated link, offered on 127.0.0.1
+        MuxClient guiMux;                // new PC: the GUI's own reads (manifest, app list)
         bool certsOnOldPc;
         int chunksDone, chunksTotal;
         Action dialogOk;
@@ -88,7 +92,7 @@ namespace Hopover.App
             SetupCoffee();
 
             Click("BtnOld", StartScan);
-            Click("BtnNew", () => { ShowPage("PageConnect", "New PC"); F<TextBox>("FromBox").Focus(); });
+            Click("BtnNew", () => { ShowPage("PageConnect", "New PC"); F<TextBox>("CodeBox").Focus(); });
             Click("BtnExport", StartExport);
             Click("BtnStopShare", StopSharing);
             Click("BtnConnect", () => _ = Connect());
@@ -101,19 +105,15 @@ namespace Hopover.App
             Click("BtnVerify", Verify);
             Click("BtnExportLog", () => ToggleLog("ExportLogBorder", "BtnExportLog"));
             Click("BtnImportLog", () => ToggleLog("ImportLogBorder", "BtnImportLog"));
-            Click("BtnCopyPc", () => Copy(F<TextBlock>("SharePc").Text));
-            Click("BtnCopyIp", () => Copy(F<TextBlock>("ShareIp").Text));
-            Click("BtnCopyUser", () => Copy(F<TextBlock>("ShareUser").Text));
+            Click("BtnCopyCode", () => Copy(F<TextBlock>("LinkCode").Text));
             Click("DlgOk", () => { HideDialog(); var a = dialogOk; dialogOk = null; a?.Invoke(); });
             Click("DlgCancel", HideDialog);
 
-            F<TextBox>("FromBox").LostFocus += (s, e) =>
-            {
-                string pc = F<TextBox>("FromBox").Text.Trim().TrimStart('\\');
-                if (pc.Length > 0 && F<TextBox>("UserBox").Text.Length == 0 && !char.IsDigit(pc[0]))
-                    F<TextBox>("UserBox").Text = pc + "\\" + Environment.UserName;
-            };
-            F<PasswordBox>("PwBox").KeyDown += (s, e) => { if (e.Key == Key.Enter) _ = Connect(); };
+            F<TextBox>("CodeBox").KeyDown += (s, e) => { if (e.Key == Key.Enter) _ = Connect(); };
+            foreach (var r in new[] { "ModeLan", "ModeNet" })
+                F<RadioButton>(r).Checked += (s, e) => UpdateModeHint();
+            UpdateModeHint();
+            Window.Closed += (s, e) => { try { if (serve != null) serve.Kill(); if (proxy != null) proxy.Dispose(); } catch { } };
             foreach (var r in new[] { "SpeedGentle", "SpeedBalanced", "SpeedFull" })
                 F<RadioButton>(r).Checked += (s, e) => UpdateSpeedHint();
             UpdateSpeedHint();
@@ -301,7 +301,7 @@ namespace Hopover.App
                 LoadGroups(m);
                 F<UIElement>("ScanWait").Visibility = Visibility.Collapsed;
                 F<ProgressBar>("ScanBar").Value = 1;
-                F<TextBlock>("ScanText").Text = "Scan done. Untick what must not move.";
+                F<TextBlock>("ScanText").Text = "Scan done. Untick whatever should stay behind.";
                 certsOnOldPc = Json.Long(m, "Certs") > 0;
                 F<UIElement>("OldCertPanel").Visibility = certsOnOldPc ? Visibility.Visible : Visibility.Collapsed;
                 F<Button>("BtnExport").IsEnabled = true;
@@ -380,7 +380,7 @@ namespace Hopover.App
             {
                 F<UIElement>("ExportWorking").Visibility = Visibility.Collapsed;
                 F<TextBlock>("ExportTitle").Text = code == 0 ? "This PC is ready" : code == 2 ? "Ready, but some steps failed" : "Something failed";
-                SetRoute(code == 0 ? 1 : lastFrac, code == 0 ? "READY · SHARED READ-ONLY" : "STOPPED");
+                SetRoute(code == 0 ? 1 : lastFrac, code == 0 ? "READY · LINK OPEN" : "STOPPED");
                 if (code == 1) ToggleLogOpen("ExportLogBorder", "BtnExportLog");
             };
             engine.Start(engineDir, new[] { "export", "-Store", Store, "-Only", string.Join(",", steps.Concat(new[] { "none" })) },
@@ -393,17 +393,73 @@ namespace Hopover.App
             SetRoute(n == 0 ? 0 : (double)d / n, "PACKING  ·  " + d + " / " + n);
         }
 
-        void ApplyShare(string d)
+        void ApplyShare(string d, bool start = true)
         {
-            var p = d.Split('|');
-            F<TextBlock>("SharePc").Text = p[0];
-            F<TextBlock>("ShareUser").Text = p.Length > 1 ? p[1] : "";
-            F<TextBlock>("ShareIp").Text = p.Length > 2 ? p[2].Split(',')[0] : "";
-            F<TextBlock>("ShareWhere").Text = @"On the new PC, start Hopover.exe from OneDrive\Hopover (or \\" + p[0] + @"\hopover-store\tool) and choose 'This is the new PC'.";
+            F<TextBlock>("ShareWhere").Text = @"On the new PC, start Hopover.exe (from OneDrive\Hopover), choose 'This is the new PC' and type this code.";
             F<UIElement>("ExportWorking").Visibility = Visibility.Collapsed;
+            SetLinkBadge("WAITING FOR THE NEW PC", false);
+            F<TextBlock>("LinkPeer").Text = "";
             var card = F<FrameworkElement>("ShareCard");
             card.Visibility = Visibility.Visible;
             Fade(card, 180);
+            if (start && (serve == null || !serve.Running)) StartServe();
+        }
+
+        void StartServe()
+        {
+            serve = new EngineRun(Window.Dispatcher);
+            serve.OnEvent = (k, d) => { if (k == "LINK") OnLinkEvent(d); };
+            serve.OnLine = AppendLog;
+            serve.StartExe(exePath, new[] { "--link", "serve", "--store", Store });
+        }
+
+        void OnLinkEvent(string d)
+        {
+            int sp = d.IndexOf(' ');
+            string what = sp < 0 ? d : d.Substring(0, sp), rest = sp < 0 ? "" : d.Substring(sp + 1);
+            switch (what)
+            {
+                case "code":
+                    F<TextBlock>("LinkCode").Text = rest;
+                    SetLinkBadge("WAITING FOR THE NEW PC", false);
+                    F<TextBlock>("LinkPeer").Text = "";
+                    break;
+                case "path":
+                    SetLinkBadge(PathText(rest), rest != "none");
+                    break;
+                case "peer":
+                    F<TextBlock>("LinkPeer").Text = "Connected: " + rest;
+                    break;
+                case "state":
+                    if (rest == "burned")
+                    {
+                        SetLinkBadge("WRONG CODE  ·  NEW CODE", false);
+                        F<TextBlock>("LinkPeer").Text = "A wrong code was typed. Use the new code.";
+                    }
+                    else if (rest == "dropped") SetLinkBadge("LINK DROPPED  ·  WAITING AGAIN", false);
+                    break;
+            }
+        }
+
+        static string PathText(string path) =>
+            path == "lan" ? "LAN  ·  DIRECT" : path == "internet" ? "INTERNET  ·  DIRECT" : "NO ROUTE";
+
+        void SetBadge(string border, string text, string label, bool good)
+        {
+            var b = F<Border>(border);
+            var tb = F<TextBlock>(text);
+            tb.Text = label;
+            b.Background = good ? (Brush)Window.FindResource("Ink") : Brushes.Transparent;
+            tb.Foreground = good ? (Brush)Window.FindResource("Paper") : (Brush)Window.FindResource("Ink");
+        }
+
+        void SetLinkBadge(string label, bool good) => SetBadge("LinkBadge", "LinkBadgeText", label, good);
+
+        void UpdateModeHint()
+        {
+            F<TextBlock>("ModeHint").Text = F<RadioButton>("ModeNet").IsChecked == true
+                ? "Both PCs reach the internet. A small meeting point only swaps addresses; the files go straight from PC to PC."
+                : "Both PCs on the same router or Wi-Fi. The new PC finds the old PC by the code.";
         }
 
         void ToggleLogOpen(string border, string button)
@@ -414,50 +470,99 @@ namespace Hopover.App
         void StopSharing()
         {
             if (engine.Running) return;
+            if (serve != null) serve.Kill();
             engine.OnEvent = null;
-            engine.OnExit = code => ShowDialog("Sharing stopped",
+            engine.OnExit = code => ShowDialog("Link stopped",
                 "Delete " + Store + " on both PCs when the new PC works: it holds Wi-Fi passwords and tokens.", "OK", null, null);
             engine.Start(engineDir, new[] { "cleanup", "-Store", Store });
         }
 
         // ---------- NEW PC ----------
+        string LinkRendezvous()
+        {
+            var link = Json.Get(Json.Read(Path.Combine(engineDir ?? "", "config", "include.json")), "link");
+            return Json.Str(link, "rendezvous") ?? LinkMain.DefaultRendezvous();
+        }
+
+        void SetConnectMsg(string text, bool error)
+        {
+            var msg = F<TextBlock>("ConnectText");
+            msg.Text = text;
+            msg.Foreground = (Brush)Window.FindResource(error ? "RustDark" : "Ink2");
+        }
+
+        void StopLinkClient()
+        {
+            try { if (guiMux != null) guiMux.Dispose(); if (proxy != null) proxy.Dispose(); } catch { }
+            guiMux = null; proxy = null;
+        }
+
         async Task Connect()
         {
-            string pc = F<TextBox>("FromBox").Text.Trim().TrimStart('\\');
-            string user = F<TextBox>("UserBox").Text.Trim();
-            string pw = F<PasswordBox>("PwBox").Password;
-            var msg = F<TextBlock>("ConnectText");
-            if (pc.Length == 0) { msg.Text = "Type the name or IP address of the old PC."; msg.Foreground = (Brush)Window.FindResource("RustDark"); return; }
+            string code = F<TextBox>("CodeBox").Text.Trim();
+            bool net = F<RadioButton>("ModeNet").IsChecked == true;
+            F<UIElement>("ConnectBadge").Visibility = Visibility.Collapsed;
+            if (!LinkClient.LooksLikeCode(code))
+            {
+                SetConnectMsg("That is not a pairing code. It is a digit and three words, like 3-alpha-bravo-cafe.", true);
+                return;
+            }
             F<Button>("BtnConnect").IsEnabled = false;
             F<UIElement>("ConnectSpin").Visibility = Visibility.Visible;
-            msg.Text = "Connecting to " + pc;
-            msg.Foreground = (Brush)Window.FindResource("Ink2");
-            string manifestPath = "\\\\" + pc + "\\hopover-store\\manifest.json";
-            string error = await Task.Run(() =>
-            {
-                if (File.Exists(manifestPath)) return null;
-                if (user.Length == 0) return "Type the user of the old PC.";
-                Net("use \\\\" + pc + "\\IPC$ /delete /y");
-                var (code, output) = Net("use \\\\" + pc + "\\IPC$ " + EngineRun.Quote(pw) + " " + EngineRun.Quote("/user:" + user) + " /persistent:no");
-                if (code != 0) return "Login failed. " + output.Trim();
-                return File.Exists(manifestPath) ? null : "Connected, but there is no Hopover share. Click 'Prepare the move' on the old PC first.";
-            });
+            F<UIElement>("ImportCard").Visibility = Visibility.Collapsed;
+            SetConnectMsg(net ? "Asking the meeting point" : "Looking for the old PC", false);
+            StopLinkClient();
+            string rv = LinkRendezvous();
+            Action<string> status = s => Window.Dispatcher.BeginInvoke(new Action(() => SetConnectMsg(s, false)));
+            var res = await Task.Run(() => LinkClient.Connect(code, net ? "internet" : "lan", null, rv, 47801, status, new Rendezvous.Holder()));
             F<Button>("BtnConnect").IsEnabled = true;
             F<UIElement>("ConnectSpin").Visibility = Visibility.Collapsed;
-            if (error != null) { msg.Text = error; msg.Foreground = (Brush)Window.FindResource("RustDark"); return; }
+            if (res.Channel == null)
+            {
+                if (res.Error == "wrong-code")
+                    SetConnectMsg("Wrong code. The old PC made a new one: read it on its screen.", true);
+                else
+                {
+                    SetBadge("ConnectBadge", "ConnectBadgeText", "NO ROUTE", false);
+                    F<UIElement>("ConnectBadge").Visibility = Visibility.Visible;
+                    SetConnectMsg("No direct route. Put both PCs on the same network, or use a USB disk.", true);
+                }
+                return;
+            }
 
-            from = pc;
-            var m = Json.Read(manifestPath);
-            var apps = Json.Read("\\\\" + pc + "\\hopover-store\\apps\\winget.json");
-            int appCount = Json.List(Json.Get(apps, "Sources")).Sum(s => Json.List(Json.Get(s, "Packages")).Count());
-            int taskCount = Json.List(Json.Read("\\\\" + pc + "\\hopover-store\\tasks\\tasks.json")).Count();
+            proxy = new MuxProxy(res.Channel);
+            proxy.Closed += () => Window.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (!engine.Running) SetConnectMsg("The link to the old PC ended. Connect again.", true);
+            }));
+            proxy.Start();
+            SetBadge("ConnectBadge", "ConnectBadgeText", PathText(res.Path), true);
+            F<UIElement>("ConnectBadge").Visibility = Visibility.Visible;
+            SetConnectMsg("Connected. Reading what the old PC prepared", false);
+            var mux = guiMux = MuxClient.Connect(proxy.Port, proxy.Token);
+            var got = await Task.Run(() =>
+            {
+                Func<string, object> read = rel => { try { return Json.Parse(mux.ReadAllBytes("store", rel)); } catch (Exception) { return null; } };
+                bool certs = false;
+                try { certs = mux.List("store", "certs").Any(e => e.Name.EndsWith(".pfx", StringComparison.OrdinalIgnoreCase)); } catch (Exception) { }
+                return new { Manifest = read("manifest.json"), Apps = read(@"apps\winget.json"), Tasks = read(@"tasks\tasks.json"), Certs = certs };
+            });
+            var m = got.Manifest;
+            if (m == null)
+            {
+                SetConnectMsg("Connected, but the old PC has nothing prepared yet. Click 'Prepare the move' there first.", true);
+                return;
+            }
+            from = "link";
+            int appCount = Json.List(Json.Get(got.Apps, "Sources")).Sum(s => Json.List(Json.Get(s, "Packages")).Count());
+            int taskCount = Json.List(got.Tasks).Count();
             var plan = Json.List(Json.Get(m, "Plan")).ToList();
             long bytes = plan.Sum(p => Json.Long(p, "Bytes"));
             sumApps = appCount; sumBytes = bytes; sumTasks = taskCount;
             var distros = Json.List(Json.Get(m, "Distros")).Select(x => x.ToString()).Where(x => !x.StartsWith("docker-desktop")).ToList();
             sumDistros = distros.Count;
-            msg.Text = "Connected.";
-            msg.Foreground = (Brush)Window.FindResource("Ink");
+            SetConnectMsg("Connected to " + Json.Str(m, "Computer") + ".", false);
+            F<TextBlock>("ConnectText").Foreground = (Brush)Window.FindResource("Ink");
             F<TextBlock>("SummaryTitle").Text = Json.Str(m, "Computer") + "  ·  " + Json.Str(m, "User");
             F<TextBlock>("SummaryText").Text = appCount + " apps  ·  " + Fmt.Size(bytes) + " in " + plan.Count + " chunks  ·  " +
                                                taskCount + " scheduled tasks" + (distros.Count > 0 ? "  ·  WSL: " + string.Join(", ", distros) : "");
@@ -465,22 +570,10 @@ namespace Hopover.App
             var done = Json.List(Json.Get(state, "Done")).Select(x => x.ToString()).Where(x => x != "files").ToList();
             newSwitches.Clear();
             foreach (var kv in BuildSwitches("NewSteps", ImportSteps.Select(s => s.Key), done)) newSwitches[kv.Key] = kv.Value;
-            F<UIElement>("NewCertPanel").Visibility = Directory.Exists("\\\\" + pc + "\\hopover-store\\certs") &&
-                Directory.GetFiles("\\\\" + pc + "\\hopover-store\\certs", "*.pfx").Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+            F<UIElement>("NewCertPanel").Visibility = got.Certs ? Visibility.Visible : Visibility.Collapsed;
             var card = F<FrameworkElement>("ImportCard");
             card.Visibility = Visibility.Visible;
             Fade(card, 180);
-        }
-
-        static (int, string) Net(string args)
-        {
-            var psi = new ProcessStartInfo("net.exe", args) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
-            using (var p = Process.Start(psi))
-            {
-                string o = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
-                p.WaitForExit();
-                return (p.ExitCode, o);
-            }
         }
 
         string Speed => F<RadioButton>("SpeedGentle").IsChecked == true ? "gentle" : F<RadioButton>("SpeedFull").IsChecked == true ? "full" : "balanced";
@@ -498,6 +591,11 @@ namespace Hopover.App
             if (engine.Running) return;
             var steps = Checked(newSwitches);
             if (steps.Count == 0) return;
+            if (proxy == null)
+            {
+                ShowDialog("No link", "Connect to the old PC first.", "OK", null, null);
+                return;
+            }
             string certPw = F<PasswordBox>("NewCertPw").Password;
             if (steps.Contains("certs") && F<UIElement>("NewCertPanel").Visibility == Visibility.Visible && certPw.Length == 0)
             {
@@ -522,7 +620,12 @@ namespace Hopover.App
             F<TextBlock>("ImportTitle").Text = "Moving to this PC";
             engine.OnEvent = OnImportEvent;
             engine.OnExit = OnImportExit;
-            engine.Start(engineDir, args, new Dictionary<string, string> { ["HOPOVER_CERT_PW"] = certPw.Length > 0 ? certPw : null });
+            engine.Start(engineDir, args, new Dictionary<string, string>
+            {
+                ["HOPOVER_CERT_PW"] = certPw.Length > 0 ? certPw : null,
+                ["HOPOVER_EXE"] = exePath,
+                ["HOPOVER_LINK"] = proxy.Port + ":" + proxy.Token,
+            });
         }
 
         void OnImportEvent(string kind, string data)
@@ -612,7 +715,7 @@ namespace Hopover.App
             returnPage = "PageImport";
             F<TextBlock>("DoneStampText").Text = code == 2 ? "SOME FAILED" : "STOPPED";
             F<TextBlock>("DoneTitle").Text = code == 2 ? "Done, but some steps failed" : "The move stopped";
-            F<TextBlock>("DoneText").Text = "Start Hopover again: it retries the failed steps and copies only what is missing. The details show why.";
+            F<TextBlock>("DoneText").Text = "Just start Hopover again - it retries the failed steps and only copies what's missing. The details show what went wrong.";
             SetRoute(lastFrac, "STOPPED");
             if (currentPage != "PageImport") ShowPage("PageImport", "New PC");
             ToggleLogOpen("ImportLogBorder", "BtnImportLog");
@@ -621,7 +724,8 @@ namespace Hopover.App
         // ---------- coffee pledge ----------
         void ShowPledge()
         {
-            F<TextBlock>("PledgeText").Text = "I promise a coffee (" + Branding.PriceLabel + ") when my move works.";
+            F<TextBlock>("PledgeText").Text = "I promise: if my move works, Paul gets his coffee at the end. A promise is a promise - even on the internet.";
+            F<TextBlock>("PriceNote").Text = Branding.PriceLabel.ToUpperInvariant().Replace(", ", " \u00B7 ");
             F<TextBlock>("TicketNo").Text = "NO. " + Pledge.TicketNo;
             F<TextBlock>("TicketFrom").Text = Environment.MachineName.ToUpperInvariant();
             F<TextBlock>("LicenceLine").Text = "Source available under " + Branding.LicenceName + ".";
@@ -629,6 +733,68 @@ namespace Hopover.App
             F<CheckBox>("PledgeCheck").IsChecked = false;
             F<Button>("BtnDeal").IsEnabled = false;
             ShowPage("PagePledge", "Before we load the truck");
+            ShowArrow();
+        }
+
+        // ---------- the "tick this first" arrow ----------
+        void ShowArrow()
+        {
+            if (F<CheckBox>("PledgeCheck").IsChecked == true) return;
+            var layer = F<UIElement>("ArrowLayer");
+            layer.Visibility = Visibility.Visible;
+            UpdateArrow();
+            Window.Dispatcher.BeginInvoke(new Action(UpdateArrow), System.Windows.Threading.DispatcherPriority.Loaded);
+            if (!Motion.Enabled) return;
+            // A gentle pulse: opacity 1 to 0.6 and back, 1.4 s a cycle.
+            var pulse = new DoubleAnimation(1, 0.6, TimeSpan.FromMilliseconds(700)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = new SineEase() };
+            layer.BeginAnimation(UIElement.OpacityProperty, pulse);
+        }
+
+        void HideArrow()
+        {
+            var layer = F<UIElement>("ArrowLayer");
+            layer.BeginAnimation(UIElement.OpacityProperty, null);
+            layer.Visibility = Visibility.Collapsed;
+        }
+
+        /// <summary>A hand-drawn looking curve from under the body text to the checkbox on the ticket.</summary>
+        void UpdateArrow()
+        {
+            var page = F<FrameworkElement>("PagePledge");
+            var check = F<CheckBox>("PledgeCheck");
+            var deal = F<Button>("BtnDeal");
+            if (page == null || !page.IsVisible || !check.IsVisible) return;
+            Point head, boxTopLeft;
+            try
+            {
+                head = check.TransformToAncestor(page).Transform(new Point(-12, 12));
+                boxTopLeft = deal.TransformToAncestor(page).Transform(new Point(0, 0));
+            }
+            catch { return; }
+            var label = F<TextBlock>("ArrowLabel");
+            label.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            double lx = 56, ly = boxTopLeft.Y - 118;
+            Canvas.SetLeft(label, lx); Canvas.SetTop(label, ly);
+            var tail = new Point(lx + label.DesiredSize.Width + 12, ly + label.DesiredSize.Height / 2 + 2);
+            double dx = head.X - tail.X, dy = head.Y - tail.Y;
+            var fig = new PathFigure { StartPoint = tail };
+            // Two bezier pieces with a little wobble, like a stroke drawn by hand.
+            var mid = new Point(tail.X + dx * 0.52, tail.Y + dy * 0.62 + 12);
+            fig.Segments.Add(new BezierSegment(new Point(tail.X + dx * 0.18, tail.Y + 26), new Point(mid.X - dx * 0.14, mid.Y + 18), mid, true));
+            var c2 = new Point(mid.X + dx * 0.16, mid.Y - 24);
+            var c3 = new Point(head.X - dx * 0.08, head.Y + dy * -0.02 + 34);
+            fig.Segments.Add(new BezierSegment(c2, c3, head, true));
+            // Arrowhead: two short strokes back along the tangent at the tip.
+            double ang = Math.Atan2(head.Y - c3.Y, head.X - c3.X);
+            foreach (double side in new[] { 0.5, -0.5 })
+            {
+                var back = new Point(head.X - 16 * Math.Cos(ang + side), head.Y - 16 * Math.Sin(ang + side));
+                fig.Segments.Add(new LineSegment(back, true));
+                fig.Segments.Add(new LineSegment(head, true));
+            }
+            var g = new PathGeometry();
+            g.Figures.Add(fig);
+            F<System.Windows.Shapes.Path>("ArrowPath").Data = g;
         }
 
         void SetupCoffee()
@@ -636,10 +802,12 @@ namespace Hopover.App
             var check = F<CheckBox>("PledgeCheck");
             check.Checked += (s, e) =>
             {
+                HideArrow();
                 F<Button>("BtnDeal").IsEnabled = true;
                 F<TextBlock>("SignedLine").Text = Environment.UserName + " · " + DateTime.Now.ToString("yyyy-MM-dd HH:mm");
             };
-            check.Unchecked += (s, e) => { F<Button>("BtnDeal").IsEnabled = false; F<TextBlock>("SignedLine").Text = ""; };
+            check.Unchecked += (s, e) => { F<Button>("BtnDeal").IsEnabled = false; F<TextBlock>("SignedLine").Text = ""; ShowArrow(); };
+            F<FrameworkElement>("PagePledge").SizeChanged += (s, e) => UpdateArrow();
             Click("BtnDeal", () =>
             {
                 if (check.IsChecked != true) return;
@@ -670,7 +838,7 @@ namespace Hopover.App
         void PayFlow()
         {
             if (!Pledge.OpenUrl(Branding.CoffeeUrl, "CoffeeUrl", AppendLog)) return;
-            ShowDialog("Did it go through?", "Hopover cannot see your payment. It trusts you.", "Yes, it went through", "Not yet",
+            ShowDialog("Did it go through?", "Hopover can't see your payment, so I'll just trust you on this one :)", "Yes, it went through", "Not yet",
                 () => { Pledge.MarkPaid(); RefreshPaid(); });
         }
 
@@ -736,10 +904,10 @@ namespace Hopover.App
         void FillCheckpoint(List<AppRow> pick)
         {
             F<ItemsControl>("CheckApps").ItemsSource = pick;
-            string rest = sumBytes > 0 && lastFrac > 0 ? Fmt.Size(sumBytes * (1 - lastFrac)) + " still to copy" : "the rest of your files";
-            F<TextBlock>("NoteText").Text = "It rides in the back, wedged between " + (sumDistros > 0 ? "WSL" : "your settings") + " and " + rest +
-                                            ". No pressure. Well, a little pressure.";
-            F<TextBlock>("NoteQuote").Text = "\u201CI promise a coffee when my move works.\u201D";
+            string rest = sumBytes > 0 && lastFrac > 0 ? "the " + Fmt.Size(sumBytes * (1 - lastFrac)) + " still to copy" : "the rest of your files";
+            F<TextBlock>("NoteText").Text = "It's riding in the back, somewhere between " + (sumDistros > 0 ? "WSL" : "your settings") + " and " + rest +
+                                            ". No pressure. Well, a little pressure ;)";
+            F<TextBlock>("NoteQuote").Text = "\u201CPinky promise: I buy Paul a coffee when my move works.\u201D";
             F<TextBlock>("NoteSigned").Text = "SIGNED " + Environment.UserName + " · " + (Pledge.SignedAt.Length >= 16 ? Pledge.SignedAt.Substring(11, 5) : "");
             F<UIElement>("CheckNote").Visibility = Pledge.Paid ? Visibility.Collapsed : Visibility.Visible;
         }
@@ -845,7 +1013,7 @@ namespace Hopover.App
         {
             if (!engine.Running || closeConfirmed) return;
             e.Cancel = true;
-            ShowDialog("Stop Hopover?", "Hopover is still working. You can start it again later: it goes on where it stopped.",
+            ShowDialog("Stop Hopover?", "Hopover is still working. You can close it though - start it again later and it picks up where it stopped.",
                 "Stop and close", "Keep working", () => { engine.Kill(); closeConfirmed = true; Window.Close(); });
         }
 
@@ -871,7 +1039,7 @@ namespace Hopover.App
                     groups[1].Include = false;
                     F<UIElement>("ScanWait").Visibility = Visibility.Collapsed;
                     F<ProgressBar>("ScanBar").Value = 1;
-                    F<TextBlock>("ScanText").Text = "Scan done. Untick what must not move.";
+                    F<TextBlock>("ScanText").Text = "Scan done. Untick whatever should stay behind.";
                     F<Button>("BtnExport").IsEnabled = true;
                     ShowPage("PageScan", "Old PC");
                     break;
@@ -879,16 +1047,39 @@ namespace Hopover.App
                     FillSteps(exportRows, ExportSteps, null);
                     foreach (var r in exportRows) r.State = "done";
                     exportRows[3].State = "skipped";
-                    ApplyShare("MADPPIPER-2022|MADPPIPER-2022\\pp|192.168.1.42");
+                    ApplyShare("", false);
+                    F<TextBlock>("LinkCode").Text = "3-alpha-bravo-cafe";
+                    SetLinkBadge(PathText("lan"), true);
+                    F<TextBlock>("LinkPeer").Text = "Connected: NEWPC-2026";
                     F<TextBlock>("ExportTitle").Text = "This PC is ready";
                     ShowPage("PageExport", "Old PC");
-                    SetRoute(1, "READY  ·  SHARED READ-ONLY");
+                    SetRoute(1, "READY  ·  LINK OPEN");
+                    break;
+                case "share-waiting":
+                    FillSteps(exportRows, ExportSteps, null);
+                    foreach (var r in exportRows) r.State = "done";
+                    ApplyShare("", false);
+                    F<TextBlock>("LinkCode").Text = "7-yankee-orange-vision";
+                    SetLinkBadge("WRONG CODE  ·  NEW CODE", false);
+                    F<TextBlock>("LinkPeer").Text = "A wrong code was typed. Use the new code.";
+                    F<TextBlock>("ExportTitle").Text = "This PC is ready";
+                    ShowPage("PageExport", "Old PC");
+                    SetRoute(1, "READY  ·  LINK OPEN");
+                    break;
+                case "connect-noroute":
+                    F<RadioButton>("ModeNet").IsChecked = true;
+                    F<TextBox>("CodeBox").Text = "3-alpha-bravo-cafe";
+                    SetBadge("ConnectBadge", "ConnectBadgeText", "NO ROUTE", false);
+                    F<UIElement>("ConnectBadge").Visibility = Visibility.Visible;
+                    SetConnectMsg("No direct route. Put both PCs on the same network, or use a USB disk.", true);
+                    ShowPage("PageConnect", "New PC");
                     break;
                 case "connect":
                     foreach (var kv in BuildSwitches("NewSteps", ImportSteps.Select(s => s.Key), new[] { "env" })) newSwitches[kv.Key] = kv.Value;
-                    F<TextBox>("FromBox").Text = "MADPPIPER-2022";
-                    F<TextBox>("UserBox").Text = "MADPPIPER-2022\\pp";
-                    F<TextBlock>("ConnectText").Text = "Connected.";
+                    F<TextBox>("CodeBox").Text = "3-alpha-bravo-cafe";
+                    SetBadge("ConnectBadge", "ConnectBadgeText", PathText("lan"), true);
+                    F<UIElement>("ConnectBadge").Visibility = Visibility.Visible;
+                    F<TextBlock>("ConnectText").Text = "Connected to MADPPIPER-2022.";
                     F<TextBlock>("ConnectText").Foreground = (Brush)Window.FindResource("Ink");
                     F<TextBlock>("SummaryTitle").Text = "MADPPIPER-2022  ·  pp";
                     F<TextBlock>("SummaryText").Text = "312 apps  ·  697 GB in 486 chunks  ·  15 scheduled tasks  ·  WSL: Ubuntu-22.04";
@@ -930,6 +1121,10 @@ namespace Hopover.App
                     OnImportExit(0);
                     break;
                 case "pledge":
+                    Window.UpdateLayout();
+                    UpdateArrow();
+                    break;
+                case "pledge-signed":
                     F<CheckBox>("PledgeCheck").IsChecked = true;
                     break;
             }

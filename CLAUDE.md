@@ -33,11 +33,12 @@ User steps: `README.md`.
   zone, power plan), app registry keys (every `HKCU\Software\<vendor>` except
   `registryVendorsExclude`), Wi-Fi, drives, printers, certs, tasks, `wsl --export`,
   Docker named volumes; copies `HOPOVER_EXE` into the store and `OneDrive\Hopover`;
-  shares `hopover-store` and every fixed drive as `hopover-<letter>`, read-only.
+  opens a firewall rule (TCP 47800, UDP 47801, program Hopover.exe; group "Hopover") and the
+  GUI starts `Hopover.exe --link serve`, which shows the pairing code. No SMB shares.
 - `import -From OLDPC -Speed gentle|balanced|full`: env, then winget in a background
   runspace (`Start-BackgroundApps`), files (parallel chunks, largest first), certs, WSL,
   wait for apps, then settings (after installs, or installers overwrite them), Docker, tasks.
-- Copy: `lib\Native.cs` `RoboPool` = N robocopy processes on worker threads, CPU class
+- Copy: `lib\Native.cs` `RoboPool` = N copy processes (`RoboJob.Exe`: robocopy for the scan, `Hopover.exe --link copy` for the move) on worker threads, CPU class
   Idle/BelowNormal and low I/O priority (NtSetInformationProcess), output parsed line by
   line (no memory growth). `files-done.json` lists finished chunks; a restart skips them
   (`-Recopy` ignores it). `/E /XO /XJ`, never `/MIR`.
@@ -46,8 +47,29 @@ User steps: `README.md`.
   `PROGRESS done total runBytes`, `SHARE pc|user|ips`, `END ...`.
 - Exit codes: 0 ok, 2 some phases failed, 1 fatal. `state-import.json` lists done phases.
 
+## Link (pairing code, replaces SMB; added 2026-10-30, Paul's approved design)
+
+- Code `<digit>-w1-w2-w3` (mnemonicode list from croc, MIT, `app\Link\Words.cs`). SPAKE2 P-256 per RFC 9382
+  (`Spake2.cs`, `P256.cs` on BigInteger, variable time), AES-GCM via bcrypt.dll (`AesGcm.cs`), frames
+  `u32 len | GCM(type+payload) | tag`, per-direction keys (`Channel.cs`). A wrong confirmation burns the code
+  (`LinkServer` makes a new one). The joining PC (role A) sends `Use` on the connection it keeps.
+- Paths: (1) LAN: UDP broadcast 47801 with the room hash, TCP 47800. (2) Internet: HTTP POST
+  `http://hop.ilscipio.com/v1/meet` (long poll; `config\include.json` `link.rendezvous`; server in `rendezvous\`),
+  then TCP hole punching from the same local port. (3) Nothing else. THERE IS NO DATA RELAY.
+- New PC: the GUI holds the Channel and a loopback `MuxProxy` (random port + token, env `HOPOVER_LINK=port:token`).
+  `RoboPool` starts `Hopover.exe --link copy SRC DST ...` per chunk. SRC is `\\link\hopover-store\...` or
+  `\\link\hopover-d\...` (virtual roots `store`, `drive-d`; the server rejects `..`, rooted names, reparse points).
+  `LinkCopy.cs` prints robocopy's tab lines and exit codes; /XO rule, `name.hopover-part` + `.meta` sidecar every 32 MiB,
+  always `\\?\` paths, times and R/H/S/A set, folder times last, nothing deleted.
+- Headless verbs (run before WPF in `Program.Main`): `--link selftest|serve|proxy|copy|info|stub`.
+  `stub` is a local stand-in for the meeting point (tests only).
+- Tests: `Hopover.exe --link selftest`; `tests\link-test.ps1` (a few GB through the real engine path, loopback and
+  LAN IP, kill and resume); `tests\punch-test.ps1` (hole punch code path on loopback only: real NAT traversal untested).
+- Events: `##LINK code|path|peer|state`.
+
 ## Files
 
+- `app\Link\` - the link (see above). `tests\` - link tests.
 - `app\` - the exe: `Program.cs` (self-copy + UAC elevation, splash, `--shot DIR`),
   `MainController.cs` (all screens), `Engine.cs` (child process + engine unpack),
   `Models.cs`, `Win32.cs` (DWM dark/rounded frame), `Screenshots.cs`, `Theme.xaml`

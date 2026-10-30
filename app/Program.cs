@@ -29,6 +29,8 @@ namespace Hopover.App
         [STAThread]
         static int Main(string[] args)
         {
+            // Headless link verbs (serve, copy, selftest...) run before any WPF code: they start fast and need no window.
+            if (args.Length >= 1 && args[0] == "--link") return Hopover.Link.LinkMain.Run(args.Skip(1).ToArray());
             var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
             Pledge.Load();
             app.Resources.MergedDictionaries.Add(Res.Load<ResourceDictionary>("Theme.xaml"));

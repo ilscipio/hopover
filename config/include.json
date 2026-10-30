@@ -1,6 +1,8 @@
 {
   "_doc": "What hopover.ps1 moves. %VARS% expand on the old PC. Edit, then run 'hopover.ps1 inventory' to see the sizes.",
 
+  "link": { "rendezvous": "http://hop.ilscipio.com", "tcpPort": 47800, "udpPort": 47801 },
+
   "profileExclude": ["AppData", ".cache", ".thumbnails", ".dbus-keyrings", ".oracle_jre_usage", "seadrive_root", "OneDrive*", "NTUSER*", "ntuser*", "Searches", "IntelGraphicsProfiles", "MicrosoftEdgeBackups"],
 
   "cRootExclude": ["Windows", "Program Files", "Program Files (x86)", "ProgramData", "Users", "Recovery", "PerfLogs", "System Volume Information", "$Recycle.Bin", "$WinREAgent", "$SysReset", "$Windows.~BT", "$Windows.~WS", "Config.Msi", "Documents and Settings", "MSOCache", "OneDriveTemp", "Intel", "AMD", "NVIDIA", "ESD", "inetpub", "Seafile", "hopover-store", "*.sys", "DumpStack.log*"],

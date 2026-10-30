@@ -123,7 +123,7 @@ function ConvertTo-RoboArg([string]$Arg) {
     $a
 }
 
-function New-RoboJob([int]$Index, $Item, [string]$Src, [string]$Dst, [string[]]$Options, [string[]]$Excludes, [scriptblock]$MapPath) {
+function New-RoboJob([int]$Index, $Item, [string]$Src, [string]$Dst, [string[]]$Options, [string[]]$Excludes, [scriptblock]$MapPath, [string]$Exe, [string[]]$ExeArgs) {
     if ($Item.Kind -eq 'file') {
         $list = @((Split-Path $Src), (Split-Path $Dst), (Split-Path $Src -Leaf)) + $Options
     } elseif ($Item.Kind -eq 'files') {
@@ -138,7 +138,8 @@ function New-RoboJob([int]$Index, $Item, [string]$Src, [string]$Dst, [string[]]$
     $j.Index = $Index
     $j.Path = $Item.Path
     $j.Planned = [int64]$Item.Bytes
-    $j.Arguments = ($list | ForEach-Object { ConvertTo-RoboArg $_ }) -join ' '
+    $j.Arguments = (@($ExeArgs | Where-Object { $_ }) + $list | ForEach-Object { ConvertTo-RoboArg $_ }) -join ' '
+    if ($Exe) { $j.Exe = $Exe }
     $j
 }
 
@@ -192,8 +193,21 @@ function ConvertTo-TargetPath([string]$OldPath, [string]$OldProfile) {
     "C:\Drives\$drive" + $OldPath.Substring(2)
 }
 
+function Get-LinkExe {
+    # Hopover.exe --link copy is the robocopy of the link. The GUI (or --link proxy) sets HOPOVER_LINK and HOPOVER_EXE.
+    if (-not $env:HOPOVER_LINK) { throw 'No link to the old PC. Connect with the pairing code in Hopover first.' }
+    if (-not $env:HOPOVER_EXE -or -not (Test-Path -LiteralPath $env:HOPOVER_EXE)) { throw 'HOPOVER_EXE is not set: start the move from Hopover.exe.' }
+    $env:HOPOVER_EXE
+}
+
+function Invoke-LinkCopy([string[]]$CopyArgs) {
+    # A GUI-subsystem exe returns at once unless its output is piped: Out-Null waits for it.
+    & (Get-LinkExe) --link copy @CopyArgs | Out-Null
+    $LASTEXITCODE
+}
+
 function ConvertTo-SourcePath([string]$OldPath, [string]$From) {
-    # Old "D:\x" is served by the share \\OLDPC\hopover-d.
+    # Old "D:\x" is the virtual root \\link\hopover-d on the old PC (the name before the share is ignored).
     $drive = $OldPath.Substring(0, 1).ToLower()
     "\\$From\hopover-$drive" + $OldPath.Substring(2)
 }
@@ -207,6 +221,7 @@ function Copy-Plan($Plan, [string]$From, [string]$OldProfile, [string[]]$Exclude
     $done = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
     if (-not $Recopy) { foreach ($p in @(Read-Json $doneFile)) { if ($p) { [void]$done.Add($p) } } }
     $sp = Get-SpeedProfile $Speed
+    $exe = Get-LinkExe
     # /XO: a re-run never overwrites a file that is newer on this PC. File lines stay on
     # (no /NFL): their byte counts drive the progress bar.
     $opts = @('/COPY:DAT', '/DCOPY:DAT', "/MT:$($sp.Mt)", '/R:1', '/W:1', '/XJ', '/XO', '/NP', '/NDL', '/NJH', '/NJS', '/BYTES')
@@ -223,7 +238,7 @@ function Copy-Plan($Plan, [string]$From, [string]$OldProfile, [string[]]$Exclude
     $jobs = New-Object 'System.Collections.Generic.List[Hopover.RoboJob]'
     for ($i = 0; $i -lt $todo.Count; $i++) {
         $it = $todo[$i]
-        $jobs.Add((New-RoboJob $i $it (ConvertTo-SourcePath $it.Path $From) (ConvertTo-TargetPath $it.Path $OldProfile) $opts $ex { param($p) ConvertTo-SourcePath $p $From }))
+        $jobs.Add((New-RoboJob $i $it (ConvertTo-SourcePath $it.Path $From) (ConvertTo-TargetPath $it.Path $OldProfile) $opts $ex { param($p) ConvertTo-SourcePath $p $From } $exe @('--link', 'copy')))
     }
     $pool = [Hopover.RoboPool]::new($jobs.ToArray(), $sp.Workers, $Speed, $false)
     Write-Note "$($todo.Count) chunks, $($sp.Workers) at once, $($sp.Mt) threads each ($Speed)"
@@ -238,13 +253,14 @@ function Copy-Plan($Plan, [string]$From, [string]$OldProfile, [string[]]$Exclude
         $state.DoneBytes += $j.Planned
         $state.DoneCopied += $j.Copied
         Send-Event ITEMDONE "$($j.Index) $($j.Planned) $($j.ExitCode)"
-        if ($j.ExitCode -ge 8) { Write-Warn "robocopy exit $($j.ExitCode) for $($j.Path) (see $log)"; $state.Failed += $j.Path }
+        if ($j.ExitCode -ge 8) { Write-Warn "copy exit $($j.ExitCode) for $($j.Path) (see $log)"; $state.Failed += $j.Path }
         elseif (-not $WhatIf) { [void]$done.Add("$($todo[$j.Index].Kind)|$($j.Path)") }
-        if (([DateTime]::Now - $state.LastSave).TotalSeconds -ge 30) { Write-Json @($done) $doneFile; $state.LastSave = [DateTime]::Now }
+        if (([DateTime]::Now - $state.LastSave).TotalSeconds -ge 10) { Write-Json @($done) $doneFile; $state.LastSave = [DateTime]::Now }
     } {
         # Done chunks count with their planned size; running ones with what they copied so far.
         $now = $state.DoneBytes + [math]::Max(0, $pool.Copied - $state.DoneCopied)
         Send-Event PROGRESS "$now $total $($pool.Copied)"
+        if (-not $WhatIf -and (([DateTime]::Now - $state.LastSave).TotalSeconds -ge 10)) { Write-Json @($done) $doneFile; $state.LastSave = [DateTime]::Now }
         $e = $null
         while ($pool.Errors.TryDequeue([ref]$e)) { Add-Content -Path $log -Value $e -Encoding UTF8 }
         # Not named OnTick: inside Wait-Pool that name is this very block.

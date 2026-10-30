@@ -1,0 +1,58 @@
+# Hopover meeting point: build the image, run it on 10.0.1.159 (restart=always).
+# Runs only when rendezvous/ changes. Needs CI variable DEPLOY_SSH_KEY (see below).
+stages:
+  - build
+  - deploy
+
+variables:
+  IMAGE: "${CI_REGISTRY_IMAGE}/rendezvous"
+  DEPLOY_HOST: 10.0.1.159
+  DEPLOY_USER: paul.piper
+
+build-rendezvous:
+  stage: build
+  image: docker:24-git
+  services:
+    - docker:24-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
+  script:
+    - docker build -t "${IMAGE}:${CI_COMMIT_SHORT_SHA}" -t "${IMAGE}:latest" rendezvous
+    - docker push "${IMAGE}:${CI_COMMIT_SHORT_SHA}"
+    - docker push "${IMAGE}:latest"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes:
+        - rendezvous/**/*
+        - .gitlab-ci.yml
+  tags:
+    - docker
+
+deploy-rendezvous:
+  stage: deploy
+  image: alpine:3.20
+  needs: [build-rendezvous]
+  before_script:
+    - apk add --no-cache openssh-client
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - echo "$DEPLOY_SSH_KEY" | tr -d '\r' > ~/.ssh/id && chmod 600 ~/.ssh/id
+    - ssh-keyscan -H $DEPLOY_HOST >> ~/.ssh/known_hosts
+  script:
+    - |
+      ssh -i ~/.ssh/id ${DEPLOY_USER}@${DEPLOY_HOST} "
+        echo '${CI_REGISTRY_PASSWORD}' | docker login -u '${CI_REGISTRY_USER}' --password-stdin ${CI_REGISTRY} &&
+        docker pull ${IMAGE}:${CI_COMMIT_SHORT_SHA} &&
+        (docker rm -f hopover-rendezvous || true) &&
+        docker run -d --name hopover-rendezvous --restart=always -p 192.168.32.1:47900:47900 ${IMAGE}:${CI_COMMIT_SHORT_SHA} &&
+        docker logout ${CI_REGISTRY}"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes:
+        - rendezvous/**/*
+        - .gitlab-ci.yml
+  environment:
+    name: production
+  tags:
+    - docker

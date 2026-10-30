@@ -19,13 +19,16 @@ licences, default apps, display scale.
 1. Double-click `Hopover.exe`. Allow admin rights.
 2. Click **This is the old PC**. Wait for the scan.
 3. Untick what must not move. Click **Prepare the move**.
-4. Note the PC name, IP address and user in the green card.
+4. Read the pairing code in the card (like `3-alpha-bravo-cafe`). Leave this PC on.
 
 ## New PC
 
-1. Sign in to OneDrive. Double-click `OneDrive\Hopover\Hopover.exe`
-   (or `\\OLDPC\hopover-store\tool\Hopover.exe`).
-2. Click **This is the new PC**. Type the PC name, user and password. Click **Connect**.
+1. Sign in to OneDrive. Double-click `OneDrive\Hopover\Hopover.exe`.
+2. Click **This is the new PC**. Choose **Same network** or **Over the internet**.
+   Type the pairing code. Click **Connect**. No Windows password is needed.
+   The code works for one try: a wrong guess makes a new code on the old PC.
+   If there is no direct route, put both PCs on one network or move the files with a USB disk.
+   No server ever carries your files.
 3. Choose the speed. Click **Start the move**. Sign in to 1Password and OneDrive meanwhile.
 4. Click **Open the checklist** and work through it.
 5. Click **Turn on scheduled tasks** when the repos and venvs work.
@@ -54,7 +57,10 @@ run in the background while the files copy.
 ## Without the GUI (administrator PowerShell)
 
 - Old PC: `.\hopover.ps1 inventory`, then `.\hopover.ps1 export`.
-- New PC: `net use \\OLDPC\IPC$ /user:OLDPC\pp`, then `.\hopover.ps1 import -From OLDPC -Speed balanced`.
+- Old PC: after `export`, run `Hopover.exe --link serve` (it prints the code).
+- New PC: `Hopover.exe --link proxy --mode lan --code <code>` prints `##LINK proxy <port> <token>`.
+  Set `HOPOVER_EXE` to the exe and `HOPOVER_LINK=<port>:<token>`, then `.\hopover.ps1 import`.
+- Tests: `Hopover.exe --link selftest`, `tests\link-test.ps1`, `tests\punch-test.ps1`.
 - `enable-tasks`, `verify`, `cleanup` as above. `-WhatIf` changes nothing.
   `-Only files,tasks` or `-Skip wsl` runs a part. `-Recopy` copies chunks marked done again.
 - An `include.json` next to `Hopover.exe` overrides `config\include.json`.

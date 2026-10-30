@@ -46,6 +46,28 @@ namespace Hopover.App
             psi.EnvironmentVariables["HOPOVER_GUI"] = "1";
             if (env != null) foreach (var kv in env) if (kv.Value != null) psi.EnvironmentVariables[kv.Key] = kv.Value;
 
+            Launch(psi);
+        }
+
+        /// <summary>Runs Hopover.exe itself with a headless verb (for example "--link serve"). Same event and line handling.</summary>
+        public void StartExe(string exe, IEnumerable<string> args, IDictionary<string, string> env = null)
+        {
+            var psi = new ProcessStartInfo(exe)
+            {
+                Arguments = string.Join(" ", args.Select(Quote)),
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
+            };
+            if (env != null) foreach (var kv in env) if (kv.Value != null) psi.EnvironmentVariables[kv.Key] = kv.Value;
+            Launch(psi);
+        }
+
+        void Launch(ProcessStartInfo psi)
+        {
             proc = new Process { StartInfo = psi };
             proc.OutputDataReceived += (s, e) => { if (e.Data != null) ui.BeginInvoke(new Action(() => Handle(e.Data))); };
             proc.ErrorDataReceived += (s, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) ui.BeginInvoke(new Action(() => OnLine?.Invoke("! " + e.Data))); };
