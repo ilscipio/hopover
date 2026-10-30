@@ -26,7 +26,10 @@ function Import-Apps([string]$Store, $Config, [switch]$WhatIf) {
     # Password managers and sync clients first, so sign-in can start while the rest installs.
     foreach ($id in $Config.priorityApps) {
         Write-Note "install $id"
-        if (-not $WhatIf) { winget install --id $id -e @flags | Out-Null }
+        if (-not $WhatIf) {
+            winget install --id $id -e @flags | Out-Null
+            if ($LASTEXITCODE -eq 0) { Send-Event APP "$id|" }
+        }
     }
     if ($WhatIf) { Write-Note "would run: winget import -i $json --ignore-unavailable"; return }
     Write-Note 'Sign in to 1Password and OneDrive now. The other apps install in the meantime.' 'Green'
@@ -35,6 +38,14 @@ function Import-Apps([string]$Store, $Config, [switch]$WhatIf) {
         $l = "$_".Trim()
         # Drop spinner and progress-bar lines (block characters U+2580-U+259F). ASCII only in
         # this file: PowerShell 5.1 reads a file without BOM as ANSI.
+        # One event per finished app for the GUI checkpoint: "##APP <id>|<name>". Matches the English and German winget text.
+        if ($l -match '\[([A-Za-z0-9][\w.+-]*\.[\w.+-]+)\]') {
+            $curId = $Matches[1]
+            $curName = (($l -replace '\s*\[.*$', '') -replace '^(Found|Gefunden)\s+', '').Trim()
+        } elseif ($curId -and $l -match 'Successfully installed|Erfolgreich installiert|already installed|bereits installiert') {
+            Send-Event APP "$curId|$curName"
+            $curId = $null
+        }
         if ($l -and $l -notmatch '^[\s\-\\|/]+$|^\d+\s*%$|[▀-▟]') { Write-Note $l }
     }
 }

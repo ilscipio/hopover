@@ -30,6 +30,7 @@ namespace Hopover.App
         static int Main(string[] args)
         {
             var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+            Pledge.Load();
             app.Resources.MergedDictionaries.Add(Res.Load<ResourceDictionary>("Theme.xaml"));
             int shot = Array.IndexOf(args, "--shot");
             app.DispatcherUnhandledException += (s, e) =>
@@ -126,7 +127,7 @@ namespace Hopover.App
         }
     }
 
-    /// <summary>The load screen: logo hops, a gradient slice runs across the track.</summary>
+    /// <summary>The load screen: the arch of the mark hops (1.4 s loop) and a crate rides the hop line.</summary>
     class Splash
     {
         readonly Window w;
@@ -146,24 +147,10 @@ namespace Hopover.App
 
         void Animate()
         {
-            var slice = (TranslateTransform)w.FindName("SliceX");
-            var track = (FrameworkElement)w.FindName("Track");
-            var run = new DoubleAnimation(-140, track.ActualWidth, TimeSpan.FromSeconds(1.25))
-            {
-                RepeatBehavior = RepeatBehavior.Forever,
-                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
-            };
-            slice.BeginAnimation(TranslateTransform.XProperty, run);
-
-            var hop = new DoubleAnimationUsingKeyFrames { RepeatBehavior = RepeatBehavior.Forever, Duration = TimeSpan.FromSeconds(1.6) };
-            hop.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.Zero)));
-            hop.KeyFrames.Add(new EasingDoubleKeyFrame(-9, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(0.28)), new QuadraticEase { EasingMode = EasingMode.EaseOut }));
-            hop.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(0.56)), new BounceEase { Bounces = 1, Bounciness = 3 }));
-            hop.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(1.6))));
-            ((TranslateTransform)w.FindName("LogoHop")).BeginAnimation(TranslateTransform.YProperty, hop);
-
+            // The mark and the hop line animate themselves (Motion.cs); here only the fade-in.
+            if (!Motion.Enabled) return;
             w.Opacity = 0;
-            w.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(220)));
+            w.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)));
         }
 
         public void Status(string text) => ((TextBlock)w.FindName("Status")).Text = text + "...";
@@ -188,7 +175,8 @@ namespace Hopover.App
 
         public void FadeOutAndClose()
         {
-            var a = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(260));
+            if (!Motion.Enabled) { w.Close(); return; }
+            var a = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(180));
             a.Completed += (s, e) => w.Close();
             w.BeginAnimation(UIElement.OpacityProperty, a);
         }

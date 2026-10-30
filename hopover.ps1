@@ -216,10 +216,22 @@ function Start-BackgroundApps {
     Write-Step 'Apps (winget) start in the background'
     Send-Event STEP 'apps start'
     Write-Note "winget log: $log"
-    [pscustomobject]@{ PS = $ps; Handle = $ps.BeginInvoke(); Reported = $false }
+    [pscustomobject]@{ PS = $ps; Handle = $ps.BeginInvoke(); Reported = $false; Seen = 0 }
+}
+
+# The background runspace has no console: its Write-Host lines (##APP events) arrive in its information stream.
+function Send-BackgroundEvents($Bg) {
+    if (-not $Bg) { return }
+    $info = $Bg.PS.Streams.Information
+    while ($Bg.Seen -lt $info.Count) {
+        $line = "$($info[$Bg.Seen].MessageData)"
+        $Bg.Seen++
+        if ($line.StartsWith('##APP ')) { Write-Host $line }
+    }
 }
 
 function Test-BackgroundApps($Bg) {
+    Send-BackgroundEvents $Bg
     if (-not $Bg -or $Bg.Reported -or -not $Bg.Handle.IsCompleted) { return }
     $Bg.Reported = $true
     try {
@@ -241,7 +253,7 @@ function Wait-BackgroundApps($Bg) {
     Write-Step 'Wait for the app installs to finish'
     # A winget installer that waits for a click would hold the move forever: 4 hours at most.
     $until = (Get-Date).AddHours(4)
-    while (-not $Bg.Handle.IsCompleted -and (Get-Date) -lt $until) { Start-Sleep -Seconds 2 }
+    while (-not $Bg.Handle.IsCompleted -and (Get-Date) -lt $until) { Start-Sleep -Seconds 2; Send-BackgroundEvents $Bg }
     if (-not $Bg.Handle.IsCompleted) {
         Write-Warn 'winget still runs after 4 hours: Hopover goes on. Check the apps log and install the rest by hand.'
         Send-Event STEP 'apps failed'

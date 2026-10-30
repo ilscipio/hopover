@@ -32,9 +32,12 @@ Write-Host "references: $ref"
 
 # ---------- icon, rendered from the logo in Theme.xaml ----------
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml
-$theme = [Windows.Markup.XamlReader]::Parse((Get-Content (Join-Path $App 'Theme.xaml') -Raw))
-$logo = $theme['Logo']
+# Theme.xaml names its fonts by folder (@FONTDIR@); the icon needs no text, so any folder will do.
+$themeXaml = (Get-Content (Join-Path $App 'Theme.xaml') -Raw -Encoding UTF8).Replace('@FONTDIR@', ([Uri](Join-Path $App 'fonts\')).AbsoluteUri)
+$theme = [Windows.Markup.XamlReader]::Parse($themeXaml)
 $pngs = foreach ($size in 16, 20, 24, 32, 40, 48, 64, 128, 256) {
+    # Heavier cuts of the mark at the small sizes (16 px heaviest, 20 and 24 px heavy).
+    $logo = if ($size -le 16) { $theme['LogoIcon16'] } elseif ($size -le 24) { $theme['LogoIcon24'] } else { $theme['LogoIcon'] }
     $dv = New-Object Windows.Media.DrawingVisual
     $dc = $dv.RenderOpen()
     $dc.DrawImage($logo, (New-Object Windows.Rect 0, 0, $size, $size))
@@ -68,7 +71,8 @@ $resources = @(
     "$App\Theme.xaml,ui/Theme.xaml", "$App\Main.xaml,ui/Main.xaml", "$App\Splash.xaml,ui/Splash.xaml",
     "$Root\hopover.ps1,engine/hopover.ps1", "$Root\config\include.json,engine/config/include.json",
     "$Root\lib\Native.cs,engine/lib/Native.cs"
-) + @(Get-ChildItem "$Root\lib\*.ps1" | ForEach-Object { "$($_.FullName),engine/lib/$($_.Name)" })
+) + @(Get-ChildItem "$Root\lib\*.ps1" | ForEach-Object { "$($_.FullName),engine/lib/$($_.Name)" }) +
+    @(Get-ChildItem "$App\fonts\*.ttf" | ForEach-Object { "$($_.FullName),fonts/$($_.Name)" })
 $refs = @("$ref\mscorlib.dll", "$ref\System.dll", "$ref\System.Core.dll", "$ref\System.Xml.dll", "$ref\System.Xaml.dll",
           "$ref\System.Web.Extensions.dll", "$wpf\WindowsBase.dll", "$wpf\PresentationCore.dll", "$wpf\PresentationFramework.dll")
 $out = Join-Path $Dist 'Hopover.exe'

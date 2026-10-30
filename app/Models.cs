@@ -36,6 +36,9 @@ namespace Hopover.App
         public long Files { get; set; }
         public double BarRatio { get => barRatio; set => Set(ref barRatio, value); }
         public string SizeText => Fmt.Size(Bytes);
+        /// <summary>The crate code: HOP- and a running number.</summary>
+        public string Code { get; set; }
+        public string Sub => WhyText + "  ·  " + Path;
 
         public string WhyText
         {
@@ -60,6 +63,7 @@ namespace Hopover.App
         string state = "pending";
         string detail = "";
         public string Key { get; set; }
+        public string No { get; set; }
         public string Label { get; set; }
         public bool IsLast { get; set; }
         public string State { get => state; set => Set(ref state, value); }
@@ -71,6 +75,24 @@ namespace Hopover.App
         public int Index { get; set; }
         public string Path { get; set; }
         public string SizeText { get; set; }
+        public string Code => "HOP-" + (Index + 1).ToString("0000");
+    }
+
+    /// <summary>One finished app install, from the engine event "##APP id|name".</summary>
+    public class AppRow
+    {
+        public string Id { get; set; }
+        public string Name { get; set; }
+        public string Check { get; set; }
+        /// <summary>The Start menu shortcut, or null when the app cannot be found: then there is no Open button.</summary>
+        public string Launch { get; set; }
+        public bool CanOpen => Launch != null;
+    }
+
+    public class ReceiptLine
+    {
+        public string What { get; set; }
+        public string N { get; set; }
     }
 
     public class CheckRow : Bindable
