@@ -110,7 +110,7 @@ func (s *server) statsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+key)) != 1 {
-		reply(w, 401, errv("unauthorized"))
+		http.NotFound(w, r)
 		return
 	}
 	reply(w, 200, s.snapshot())

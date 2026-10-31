@@ -96,7 +96,7 @@ func TestStatsAuth(t *testing.T) {
 		t.Fatal("unset key must 404")
 	}
 	t.Setenv("STATS_KEY", "k")
-	if get("") != 401 || get("Bearer no") != 401 || get("Bearer k") != 200 {
+	if get("") != 404 || get("Bearer no") != 404 || get("Bearer k") != 200 {
 		t.Fatal("auth")
 	}
 }
