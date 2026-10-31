@@ -10,7 +10,7 @@ deploy-rendezvous:
     - sudo docker run --rm -v "$CI_PROJECT_DIR/rendezvous:/src" -w /src golang:1.22-alpine go test ./...
     - sudo docker build -t "hopover-rendezvous:$CI_COMMIT_SHORT_SHA" -t hopover-rendezvous:latest rendezvous
     - sudo docker rm -f hopover-rendezvous || true
-    - sudo docker run -d --name hopover-rendezvous --restart=always -p 192.168.32.1:47900:47900 "hopover-rendezvous:$CI_COMMIT_SHORT_SHA"
+    - sudo docker run -d --name hopover-rendezvous --restart=always -v /opt/hopover/data:/data --env-file /opt/hopover/stats.env -p 192.168.32.1:47900:47900 "hopover-rendezvous:$CI_COMMIT_SHORT_SHA"
     - sleep 2
     - 'curl -fsS -H "Host: hop.ilscipio.com" http://127.0.0.1/v1/ping'
   rules:

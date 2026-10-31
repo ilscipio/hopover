@@ -8,8 +8,10 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"regexp"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -40,10 +42,17 @@ type server struct {
 	rooms map[string]*waiter
 	hits  map[string][]time.Time
 	ttl   time.Duration
+
+	matches   map[string]*matched
+	smu       sync.Mutex
+	stats     statsData
+	dirty     bool
+	statsPath string
 }
 
 func newServer(ttl time.Duration) *server {
-	return &server{rooms: map[string]*waiter{}, hits: map[string][]time.Time{}, ttl: ttl}
+	return &server{rooms: map[string]*waiter{}, hits: map[string][]time.Time{}, ttl: ttl,
+		matches: map[string]*matched{}, stats: statsData{Days: map[string]counts{}}}
 }
 
 func reply(w http.ResponseWriter, code int, v any) {
@@ -100,6 +109,11 @@ func (s *server) sweep() {
 				delete(s.hits, ip)
 			}
 		}
+		for r, m := range s.matches {
+			if now.Sub(m.at) > resultWindow {
+				delete(s.matches, r)
+			}
+		}
 		s.mu.Unlock()
 	}
 }
@@ -148,6 +162,7 @@ func (s *server) meet(w http.ResponseWriter, r *http.Request) {
 	if ok && o.op != q.Op {
 		delete(s.rooms, q.Room)
 		s.mu.Unlock()
+		s.noteMatch(q.Room)
 		o.ch <- map[string]any{"v": 1, "you": o.you, "peer": full, "peer_local": q.Local}
 		reply(w, 200, map[string]any{"v": 1, "you": full, "peer": o.you, "peer_local": o.local})
 		return
@@ -190,6 +205,8 @@ func (s *server) handler() http.Handler {
 	m := http.NewServeMux()
 	m.HandleFunc("/v1/meet", s.meet)
 	m.HandleFunc("/v1/ping", s.ping)
+	m.HandleFunc("/v1/result", s.result)
+	m.HandleFunc("/v1/stats", s.statsHandler)
 	return m
 }
 
@@ -199,7 +216,16 @@ func main() {
 		a = ":47900"
 	}
 	s := newServer(10 * time.Minute)
+	s.statsPath = os.Getenv("STATS_FILE")
+	if s.statsPath == "" {
+		s.statsPath = "/data/stats.json"
+	}
+	s.loadStats()
 	go s.sweep()
+	go s.flusher()
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
+	go func() { <-sig; s.flush(); os.Exit(0) }()
 	srv := &http.Server{Addr: a, Handler: s.handler(), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 15 * time.Second}
 	if srv.ListenAndServe() != nil {
 		os.Exit(1)

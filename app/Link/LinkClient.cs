@@ -98,6 +98,31 @@ namespace Hopover.Link
             finally { holder.Set(null); if (s != null) try { s.Close(); } catch { } }
         }
 
+        /// <summary>Tells the meeting point once how the move connected ("lan", "internet" or "none"). Fire and forget: 5 s timeout, never throws.</summary>
+        public static void ReportResult(string hostPort, string room, string path)
+        {
+            var th = new Thread(() =>
+            {
+                Socket s = null;
+                try
+                {
+                    s = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                    s.SendTimeout = 5000; s.ReceiveTimeout = 5000;
+                    var ar = s.BeginConnect(ParseEp(hostPort), null, null);
+                    if (!ar.AsyncWaitHandle.WaitOne(5000)) return;
+                    s.EndConnect(ar);
+                    byte[] bb = Encoding.UTF8.GetBytes(Ser.Serialize(new Dictionary<string, object> { { "v", 1 }, { "room", room }, { "path", path } }));
+                    string hostHeader = hostPort.StartsWith("http://") ? hostPort.Substring(7).TrimEnd('/') : hostPort;
+                    s.Send(Encoding.ASCII.GetBytes("POST /v1/result HTTP/1.1\r\nHost: " + hostHeader + "\r\nContent-Type: application/json\r\nContent-Length: " + bb.Length + "\r\nConnection: close\r\n\r\n"));
+                    s.Send(bb);
+                    s.Receive(new byte[512]);
+                }
+                catch (Exception) { }
+                finally { if (s != null) try { s.Close(); } catch { } }
+            }) { IsBackground = true };
+            th.Start();
+        }
+
         /// <summary>
         /// Simultaneous open for about <paramref name="ms"/> ms: listens on the punch port and connects to every candidate
         /// from the same port. Every connected socket goes to <paramref name="onSocket"/>.
@@ -324,7 +349,9 @@ namespace Hopover.Link
             Rendezvous.Punch(res, 12000, onSocket, () => winner != null || wrong);
             DateTime end = DateTime.UtcNow.AddSeconds(12);
             while (winner == null && !wrong && Volatile.Read(ref pending) > 0 && DateTime.UtcNow < end) Thread.Sleep(50);
-            if (winner != null) return new ConnectResult { Channel = winner, Path = winner.Path };
+            string room = LinkServer.RoomOf(code);
+            if (winner != null) { Rendezvous.ReportResult(rendezvous, room, winner.Path); return new ConnectResult { Channel = winner, Path = winner.Path }; }
+            if (!wrong) Rendezvous.ReportResult(rendezvous, room, "none");
             return new ConnectResult { Error = wrong ? "wrong-code" : "no-route", Detail = "no direct connection" };
         }
     }
