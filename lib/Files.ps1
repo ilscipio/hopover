@@ -266,8 +266,35 @@ function Copy-Plan($Plan, [string]$From, [string]$OldProfile, [string[]]$Exclude
         # Not named OnTick: inside Wait-Pool that name is this very block.
         if ($Heartbeat) { & $Heartbeat }
     }
-    if (-not $WhatIf) { Write-Json @($done) $doneFile; Repair-SshAcl }
+    if (-not $WhatIf) {
+        Write-Json @($done) $doneFile
+        Set-CopiedOwner @($Plan | ForEach-Object { ConvertTo-TargetPath $_.Group $OldProfile } | Sort-Object -Unique)
+        Repair-SshAcl
+    }
     $state.Failed
+}
+
+function Set-CopiedOwner([string[]]$Roots) {
+    # The copy runs elevated, so Windows makes the Administrators group the owner of every new file.
+    # git then refuses the repos ("dubious ownership") in a normal, not elevated shell: give them to the user.
+    $me = "$env:USERDOMAIN\$env:USERNAME"
+    foreach ($r in $Roots) {
+        # A whole drive (D:\) may hold more than the copy: leave it alone.
+        if ($r.TrimEnd('\').Length -le 2 -or -not (Test-Path -LiteralPath $r)) { continue }
+        Write-Note "owner $me on $r"
+        icacls $r /setowner $me /T /C /L /Q 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) { Write-Warn "icacls /setowner on $r reported errors ($LASTEXITCODE)" }
+    }
+}
+
+function Restore-NodeLink($Link, [string]$OldProfile, [switch]$WhatIf) {
+    # nvm-windows: C:\Program Files\nodejs links to the active version in %APPDATA%\nvm (copied with AppData).
+    if (-not $Link -or -not $Link.Path -or -not $Link.Target) { return }
+    if (Test-Path -LiteralPath $Link.Path) { Write-Note "node link $($Link.Path) exists"; return }
+    $target = $Link.Target -replace [regex]::Escape($OldProfile), $env:USERPROFILE.Replace('$', '$$')
+    if (-not (Test-Path -LiteralPath $target)) { Write-Warn "node $target is missing: run 'nvm install' and 'nvm use'"; return }
+    Write-Note "node link $($Link.Path) -> $target"
+    if (-not $WhatIf) { New-Item -ItemType SymbolicLink -Path $Link.Path -Target $target | Out-Null }
 }
 
 function Repair-SshAcl {

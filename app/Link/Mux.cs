@@ -185,6 +185,8 @@ namespace Hopover.Link
             uint sid = (uint)Interlocked.Increment(ref nextSid);
             var call = new Call(this, sid);
             calls[sid] = call;
+            // ReadLoop may have failed every open call between the check above and this line.
+            if (dead != null) { Forget(sid); throw new LinkException(dead); }
             try { Send(Msg.Req, sid, Encoding.UTF8.GetBytes(Ser.Serialize(request))); }
             catch (Exception e) { Forget(sid); throw new LinkException("send failed", e); }
             return call;

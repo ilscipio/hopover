@@ -2,7 +2,7 @@
 # Each Export-* writes into the store on the old PC; each Import-* reads it on the new PC.
 
 # ---------- apps ----------
-function Export-Apps([string]$Store) {
+function Export-Apps([string]$Store, $Config) {
     $json = Join-Path $Store 'apps\winget.json'
     New-Item -ItemType Directory -Path (Split-Path $json) -Force | Out-Null
     # winget prints the packages it cannot map; keep them for the checklist.
@@ -16,23 +16,71 @@ function Export-Apps([string]$Store) {
         Select-Object DisplayName, DisplayVersion, Publisher, InstallLocation, URLInfoAbout |
         Sort-Object DisplayName -Unique |
         ConvertTo-Json | Set-Content (Join-Path $Store 'apps\registry.json') -Encoding UTF8
-    $n = (Read-Json $json).Sources | ForEach-Object { $_.Packages.Count } | Measure-Object -Sum
-    Write-Note "winget packages: $($n.Sum)"
+    $ids = @((Read-Json $json).Sources | ForEach-Object { $_.Packages.PackageIdentifier })
+    # Apps that winget export cannot match (Chrome, NVM, ...): appMap names their winget id.
+    $names = @((Read-Json (Join-Path $Store 'apps\registry.json')) | ForEach-Object { $_.DisplayName })
+    $extra = @(foreach ($p in $Config.appMap.PSObject.Properties) {
+        if ($ids -notcontains $p.Value -and ($names | Where-Object { $_ -match $p.Name })) { $p.Value }
+    }) | Sort-Object -Unique
+    Write-Json @($extra) (Join-Path $Store 'apps\extra.json')
+    # Python installed for this user only: the venvs point at %LOCALAPPDATA%\Programs\Python, so the new PC
+    # needs the same scope (an elevated winget would pick C:\Program Files).
+    $user = @($ids | Where-Object { $_ -match '^Python\.Python\.3\.(\d+)$' -and (Test-Path "$env:LOCALAPPDATA\Programs\Python\Python3$($Matches[1])") })
+    Write-Json @($user) (Join-Path $Store 'apps\user-scope.json')
+    Write-Note "winget packages: $($ids.Count), extra from appMap: $($extra.Count) ($($extra -join ', ')), user scope: $($user -join ', ')"
+}
+
+function Install-WingetId([string]$Id, [string[]]$Flags) {
+    winget install --id $Id -e @Flags 2>&1 | ForEach-Object { "$_".Trim() } | Where-Object { $_ -match 'install|error|fail|Fehler' } | Select-Object -Last 3 | ForEach-Object { Write-Note "  $_" }
+    # 0x8A15002B: no newer version, 0x8A150061: already installed.
+    $ok = $LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq -1978335189 -or $LASTEXITCODE -eq -1978335135
+    if ($ok) { Send-Event APP "$Id|" } else { Write-Warn "winget install $Id failed (exit $LASTEXITCODE)" }
+    $ok
+}
+
+function Assert-Winget {
+    if (Get-Command winget -ErrorAction SilentlyContinue) { return }
+    # On a fresh Windows, App Installer registers for the user some minutes after the first sign-in.
+    Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe -ErrorAction SilentlyContinue
+    $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        throw 'winget is missing. Update "App Installer" in the Microsoft Store, then start Hopover again.'
+    }
 }
 
 function Import-Apps([string]$Store, $Config, [switch]$WhatIf) {
     $json = Join-Path $Store 'apps\winget.json'
     $flags = @('--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity')
+    $userScope = @(Read-Json (Join-Path $Store 'apps\user-scope.json') | Where-Object { $_ })
+    $extra = @(Read-Json (Join-Path $Store 'apps\extra.json') | Where-Object { $_ })
+    if ($WhatIf) {
+        Write-Note "would install: $(@($Config.priorityApps) + $userScope + $extra -join ', ')"
+        Write-Note "would run: winget import -i $json --ignore-unavailable"
+        return
+    }
+    Assert-Winget
+    $failed = @()
     # Password managers and sync clients first, so sign-in can start while the rest installs.
     foreach ($id in $Config.priorityApps) {
         Write-Note "install $id"
-        if (-not $WhatIf) {
-            winget install --id $id -e @flags | Out-Null
-            if ($LASTEXITCODE -eq 0) { Send-Event APP "$id|" }
-        }
+        if (-not (Install-WingetId $id $flags)) { $failed += $id }
     }
-    if ($WhatIf) { Write-Note "would run: winget import -i $json --ignore-unavailable"; return }
     Write-Note 'Sign in to 1Password and OneDrive now. The other apps install in the meantime.' 'Green'
+    foreach ($id in $userScope) {
+        Write-Note "install $id (this user only, like on the old PC)"
+        if (-not (Install-WingetId $id ($flags + '--scope', 'user'))) { $failed += $id }
+    }
+    foreach ($id in $extra) {
+        Write-Note "install $id (not in the winget export)"
+        if (-not (Install-WingetId $id $flags)) { $failed += $id }
+    }
+    # winget import has no per-package scope: the user-scope packages are done above, so leave them out.
+    if ($userScope) {
+        $w = Read-Json $json
+        foreach ($s in $w.Sources) { $s.Packages = @($s.Packages | Where-Object { $userScope -notcontains $_.PackageIdentifier }) }
+        $json = Join-Path $Store 'apps\winget-import.json'
+        Write-Json $w $json
+    }
     # Line by line into the log: the progress bars of winget would fill the memory of a runspace.
     winget import -i $json --ignore-unavailable --ignore-versions @($flags[0..1]) 2>&1 | ForEach-Object {
         $l = "$_".Trim()
@@ -48,6 +96,9 @@ function Import-Apps([string]$Store, $Config, [switch]$WhatIf) {
         }
         if ($l -and $l -notmatch '^[\s\-\\|/]+$|^\d+\s*%$|[▀-▟]') { Write-Note $l }
     }
+    if ($LASTEXITCODE -ne 0) { Write-Warn "winget import: some packages did not install (exit $LASTEXITCODE). The log lists them." }
+    if ($failed) { Write-Warn "Not installed: $($failed -join ', '). Install them by hand." }
+    Write-Json @($failed) (Join-Path $Store 'apps\failed.json')
 }
 
 # ---------- environment variables ----------
@@ -224,7 +275,8 @@ function Export-Certs([string]$Store, [securestring]$Password) {
 function Import-Certs([string]$Store, [securestring]$Password, [switch]$WhatIf) {
     foreach ($f in Get-ChildItem (Join-Path $Store 'certs\*.pfx') -ErrorAction SilentlyContinue) {
         Write-Note "certificate $($f.BaseName)"
-        if (-not $WhatIf) { Import-PfxCertificate -FilePath $f.FullName -CertStoreLocation Cert:\CurrentUser\My -Password $Password -Exportable | Out-Null }
+        # -ErrorAction Stop: a wrong password must fail the step, not pass it quietly.
+        if (-not $WhatIf) { Import-PfxCertificate -FilePath $f.FullName -CertStoreLocation Cert:\CurrentUser\My -Password $Password -Exportable -ErrorAction Stop | Out-Null }
     }
 }
 
@@ -236,7 +288,10 @@ function Export-Wsl([string]$Store, $Config) {
     foreach ($d in Get-WslDistros | Where-Object { $Config.wslSkip -notcontains $_ }) {
         $user = (Invoke-Wsl @('-d', $d, '-e', 'whoami') | Select-Object -First 1)
         Write-Note "wsl --export $d (user $user) - this stops the distro"
-        Invoke-Wsl @('--export', $d, "$dir\$d.tar") | Out-Null
+        $out = Invoke-Wsl @('--export', $d, "$dir\$d.tar")
+        $tar = Get-Item "$dir\$d.tar" -ErrorAction SilentlyContinue
+        if ($LASTEXITCODE -ne 0 -or -not $tar -or $tar.Length -eq 0) { throw "wsl --export $d failed: $($out -join ' ')" }
+        Write-Note ("{0}.tar: {1:N1} GB" -f $d, ($tar.Length / 1GB))
         $meta += [pscustomobject]@{ Name = $d; User = $user; Tar = "$d.tar" }
     }
     Copy-Item (Join-Path $env:USERPROFILE '.wslconfig') $dir -ErrorAction SilentlyContinue
@@ -261,7 +316,8 @@ function Import-Wsl([string]$Store, [switch]$WhatIf) {
         Write-Note "wsl --import $($m.Name) $target"
         if ($WhatIf) { continue }
         New-Item -ItemType Directory -Path $target -Force | Out-Null
-        Invoke-Wsl @('--import', $m.Name, $target, "$dir\$($m.Tar)") | Out-Null
+        $out = Invoke-Wsl @('--import', $m.Name, $target, "$dir\$($m.Tar)")
+        if (@(Get-WslDistros) -notcontains $m.Name) { throw "wsl --import $($m.Name) failed: $($out -join ' ')" }
         if ($m.User -and $m.User -ne 'root') {
             # An imported distro starts as root; wsl.conf restores the default user.
             $sh = "grep -q '^\[user\]' /etc/wsl.conf 2>/dev/null || printf '\n[user]\ndefault=$($m.User)\n' >> /etc/wsl.conf"
@@ -274,30 +330,51 @@ function Import-Wsl([string]$Store, [switch]$WhatIf) {
 }
 
 # ---------- Docker named volumes ----------
+function Assert-DockerUp([string]$Then) {
+    docker info --format '{{.ServerVersion}}' *> $null
+    if ($LASTEXITCODE -ne 0) { throw "Docker Desktop does not run. Start it and wait until it is ready, then $Then" }
+}
+
 function Export-DockerVolumes([string]$Store) {
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { return }
+    # Without the engine, 'docker volume ls' prints nothing and the volumes would be lost without a word.
+    Assert-DockerUp 'prepare again (only the Docker step).'
     $dir = Join-Path $Store 'docker'
     # Anonymous volumes have 64-hex names and belong to throwaway containers.
     $vols = @(docker volume ls --format '{{.Name}}' 2>$null | Where-Object { $_ -and $_ -notmatch '^[0-9a-f]{64}$' })
     if (-not $vols) { Write-Note 'no named docker volumes'; return }
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    $failed = @()
     foreach ($v in $vols) {
         Write-Note "docker volume $v"
         docker run --rm -v "${v}:/v:ro" -v "${dir}:/b" alpine tar -C /v -czf "/b/$v.tgz" . | Out-Null
+        if ($LASTEXITCODE -ne 0) { $failed += $v; Remove-Item "$dir\$v.tgz" -ErrorAction SilentlyContinue }
     }
+    if ($failed) { throw "docker volumes not saved: $($failed -join ', ')" }
 }
 
 function Import-DockerVolumes([string]$Store, [switch]$WhatIf) {
     $files = Get-ChildItem (Join-Path $Store 'docker\*.tgz') -ErrorAction SilentlyContinue
     if (-not $files) { return }
-    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { Write-Warn 'docker missing: start Docker Desktop once, then run: hopover.ps1 import -Only docker'; return }
+    # Throw, not return: the step stays open, and the next start of the move does it again.
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw 'docker is missing: install Docker Desktop, start it once, then start the move again (only the Docker step).' }
+    if (-not $WhatIf) { Assert-DockerUp 'start the move again (only the Docker step).' }
     $dir = Join-Path $Store 'docker'
+    $failed = @()
+    $existing = @(if (-not $WhatIf) { docker volume ls -q 2>$null })
     foreach ($f in $files) {
         Write-Note "docker volume $($f.BaseName)"
         if ($WhatIf) { continue }
+        # A volume that has data already (a compose stack started on this PC) is left alone.
+        if ($existing -contains $f.BaseName) {
+            $inside = docker run --rm -v "$($f.BaseName):/v" alpine sh -c 'ls -A /v | head -1' 2>$null
+            if ($inside) { Write-Note "  $($f.BaseName) has data on this PC: kept"; continue }
+        }
         docker volume create $f.BaseName | Out-Null
         docker run --rm -v "$($f.BaseName):/v" -v "${dir}:/b" alpine tar -C /v -xzf "/b/$($f.Name)" | Out-Null
+        if ($LASTEXITCODE -ne 0) { $failed += $f.BaseName }
     }
+    if ($failed) { throw "docker volumes not restored: $($failed -join ', ')" }
 }
 
 # ---------- scheduled tasks ----------

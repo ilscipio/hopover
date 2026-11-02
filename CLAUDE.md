@@ -16,6 +16,13 @@ User steps: `README.md`.
   (MADPPIPER-2022: ~697 GB, `C:\java` = 498 GB / 3.3M files).
 - NEVER run: `export`, `import`, `enable-tasks`, `cleanup`, or the exe's real flow.
   They need admin and two PCs. The exe was never clicked through for real.
+- 2026-11-02 pre-move review (not committed yet): keep-awake (both PCs), link-loss text + "Connect again",
+  old PC "Open the link again" without a new scan, orphan `--link serve` kill, store-copy STEP events,
+  apps: `appMap` (Chrome, NVM, ... that winget export misses), Python user scope, winget check;
+  WSL after apps + VirtualMachinePlatform check + import/export verified; Docker fails loudly when the engine
+  is down; owner of copied trees set to the user (git "dubious ownership"); nvm node link; LinkCopy: source
+  gone = skip, re-stat big files, time errors ignored, Mux race. Open: MuxProxy writes block its one loop;
+  server queue is FIFO (list waits behind reads).
 - Next: Paul's real move in the week of 2026-11-02 (old PC stays on). That run is the
   test. Fix what it finds here, rebuild, commit and push (`dist\Hopover.exe` is in git).
 - Selling it: decide AFTER the move (Paul, 2026-10-30). Slaide stays first in the push

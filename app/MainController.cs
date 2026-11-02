@@ -60,6 +60,8 @@ namespace Hopover.App
         readonly Queue<(DateTime At, long Bytes)> rateSamples = new Queue<(DateTime, long)>();
         readonly List<AppRow> installed = new List<AppRow>();
         bool checkpointShown;
+        bool linkLost, needReboot, serveStopping;
+        Action dialogCancel;
         int sumApps, sumTasks, sumDistros;
         long sumBytes;
         double lastFrac;
@@ -96,6 +98,7 @@ namespace Hopover.App
             Click("BtnExport", StartExport);
             Click("BtnStopShare", StopSharing);
             Click("BtnConnect", () => _ = Connect());
+            Click("BtnReconnect", () => { ShowPage("PageConnect", "New PC"); F<TextBox>("CodeBox").Focus(); });
             Click("BtnImport", StartImport);
             Click("BtnChecklist", ShowChecklist);
             Click("BtnCheckBack", () => ShowPage(returnPage, "New PC"));
@@ -107,7 +110,7 @@ namespace Hopover.App
             Click("BtnImportLog", () => ToggleLog("ImportLogBorder", "BtnImportLog"));
             Click("BtnCopyCode", () => Copy(F<TextBlock>("LinkCode").Text));
             Click("DlgOk", () => { HideDialog(); var a = dialogOk; dialogOk = null; a?.Invoke(); });
-            Click("DlgCancel", HideDialog);
+            Click("DlgCancel", () => { HideDialog(); var a = dialogCancel; dialogCancel = null; a?.Invoke(); });
 
             F<TextBox>("CodeBox").KeyDown += (s, e) => { if (e.Key == Key.Enter) _ = Connect(); };
             foreach (var r in new[] { "ModeLan", "ModeNet" })
@@ -118,7 +121,13 @@ namespace Hopover.App
                 F<RadioButton>(r).Checked += (s, e) => UpdateSpeedHint();
             UpdateSpeedHint();
 
-            engine.OnLine = AppendLog;
+            engine.OnLine = line =>
+            {
+                AppendLog(line);
+                if (line.Contains("Restart the PC")) needReboot = true;
+            };
+            // A move takes hours: neither PC may fall asleep while Hopover is open (the UI thread lives as long as the app).
+            LinkMain.KeepAwake();
             if (File.Exists(Path.Combine(Store, "state-import.json")))
                 F<UIElement>("ResumeBanner").Visibility = Visibility.Visible;
             if (Pledge.Signed) ShowPage("PageWelcome", ""); else ShowPledge();
@@ -191,8 +200,9 @@ namespace Hopover.App
             if (Motion.Enabled) e.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(ms)));
         }
 
-        void ShowDialog(string title, string text, string ok, string cancel, Action onOk)
+        void ShowDialog(string title, string text, string ok, string cancel, Action onOk, Action onCancel = null)
         {
+            dialogCancel = onCancel;
             F<TextBlock>("DlgTitle").Text = title;
             F<TextBlock>("DlgText").Text = text;
             F<Button>("DlgOk").Content = ok;
@@ -272,6 +282,44 @@ namespace Hopover.App
 
         // ---------- OLD PC ----------
         void StartScan()
+        {
+            if (!engine.Running && (serve == null || !serve.Running) && PreparedBefore(out string when))
+            {
+                ShowDialog("Open the link again?", "This PC was prepared on " + when + ". Open the link with that data (no new scan), or scan and prepare again.",
+                           "Open the link", "Scan again", ReopenLink, StartScanNow);
+                return;
+            }
+            StartScanNow();
+        }
+
+        bool PreparedBefore(out string when)
+        {
+            when = null;
+            var m = Json.Read(Path.Combine(Store, "manifest.json"));
+            var st = Json.Read(Path.Combine(Store, "state-export.json"));
+            if (m == null || st == null || !string.Equals(Json.Str(m, "Computer"), Environment.MachineName, StringComparison.OrdinalIgnoreCase)) return false;
+            when = (Json.Str(st, "Updated") ?? "").Replace('T', ' ');
+            return true;
+        }
+
+        // Old PC after a restart or a crash: the store is ready; only the firewall rule and the link server are needed.
+        void ReopenLink()
+        {
+            ShowPage("PageExport", "Old PC");
+            F<UIElement>("ShareCard").Visibility = Visibility.Collapsed;
+            F<UIElement>("ExportWorking").Visibility = Visibility.Visible;
+            F<TextBlock>("ExportTitle").Text = "Opening the link";
+            engine.OnEvent = (k, d) => { if (k == "SHARE") ApplyShare(d); };
+            engine.OnExit = code =>
+            {
+                F<UIElement>("ExportWorking").Visibility = Visibility.Collapsed;
+                F<TextBlock>("ExportTitle").Text = code == 0 ? "This PC is ready" : "Something failed";
+                if (code != 0) ToggleLogOpen("ExportLogBorder", "BtnExportLog");
+            };
+            engine.Start(engineDir, new[] { "share", "-Store", Store }, new Dictionary<string, string> { ["HOPOVER_EXE"] = exePath });
+        }
+
+        void StartScanNow()
         {
             ShowPage("PageScan", "Old PC");
             if (engine.Running) return;
@@ -407,10 +455,36 @@ namespace Hopover.App
 
         void StartServe()
         {
+            KillOrphanServers();
+            serveStopping = false;
             serve = new EngineRun(Window.Dispatcher);
             serve.OnEvent = (k, d) => { if (k == "LINK") OnLinkEvent(d); };
             serve.OnLine = AppendLog;
+            serve.OnExit = code =>
+            {
+                if (serveStopping) return;
+                SetLinkBadge("LINK STOPPED  ·  CLOSE AND START HOPOVER AGAIN", false);
+                F<TextBlock>("LinkPeer").Text = "The link server stopped (exit " + code + "). The details show why.";
+                ToggleLogOpen("ExportLogBorder", "BtnExportLog");
+            };
             serve.StartExe(exePath, new[] { "--link", "serve", "--store", Store });
+        }
+
+        // A link server left over from a crashed Hopover holds the port, so a new one could not listen.
+        // The server runs without a window; another open Hopover window is left alone.
+        void KillOrphanServers()
+        {
+            try
+            {
+                int me = System.Diagnostics.Process.GetCurrentProcess().Id;
+                foreach (var p in System.Diagnostics.Process.GetProcessesByName(Path.GetFileNameWithoutExtension(exePath)))
+                {
+                    try { if (p.Id != me && p.MainWindowHandle == IntPtr.Zero) { p.Kill(); p.WaitForExit(3000); } }
+                    catch { }
+                    finally { p.Dispose(); }
+                }
+            }
+            catch { }
         }
 
         void OnLinkEvent(string d)
@@ -470,6 +544,7 @@ namespace Hopover.App
         void StopSharing()
         {
             if (engine.Running) return;
+            serveStopping = true;
             if (serve != null) serve.Kill();
             engine.OnEvent = null;
             engine.OnExit = code => ShowDialog("Link stopped",
@@ -531,9 +606,15 @@ namespace Hopover.App
             }
 
             proxy = new MuxProxy(res.Channel);
+            var myProxy = proxy;
+            linkLost = false;
             proxy.Closed += () => Window.Dispatcher.BeginInvoke(new Action(() =>
             {
-                if (!engine.Running) SetConnectMsg("The link to the old PC ended. Connect again.", true);
+                if (proxy != myProxy) return;            // an old link that was replaced on purpose
+                linkLost = true;
+                SetConnectMsg("The link to the old PC ended. Type the code again and connect.", true);
+                if (engine.Running)
+                    F<TextBlock>("HeroItem").Text = "The link to the old PC is lost. Hopover finishes the other steps; then connect again.";
             }));
             proxy.Start();
             SetBadge("ConnectBadge", "ConnectBadgeText", PathText(res.Path), true);
@@ -591,7 +672,7 @@ namespace Hopover.App
             if (engine.Running) return;
             var steps = Checked(newSwitches);
             if (steps.Count == 0) return;
-            if (proxy == null)
+            if (proxy == null || linkLost)
             {
                 ShowDialog("No link", "Connect to the old PC first.", "OK", null, null);
                 return;
@@ -612,6 +693,8 @@ namespace Hopover.App
             chunksDone = 0; chunksTotal = 0;
             installed.Clear();
             checkpointShown = false;
+            needReboot = false;
+            F<UIElement>("BtnReconnect").Visibility = Visibility.Collapsed;
             F<UIElement>("HeroHazard").Visibility = Visibility.Visible;
             F<UIElement>("HeroWait").Visibility = Visibility.Visible;
             SetRoute(0, "LOADING THE TRUCK");
@@ -644,6 +727,7 @@ namespace Hopover.App
                 }
                 case "STEP":
                     SetStep(importRows, data);
+                    if (data == "store start") F<TextBlock>("HeroItem").Text = "Copying the prepared data from the old PC (app list, settings, WSL, Docker volumes)";
                     if (data == "apps done" && !checkpointShown && installed.Count > 0) ShowCheckpoint();
                     if (data == "files start")
                     {
@@ -715,7 +799,11 @@ namespace Hopover.App
             returnPage = "PageImport";
             F<TextBlock>("DoneStampText").Text = code == 2 ? "SOME FAILED" : "STOPPED";
             F<TextBlock>("DoneTitle").Text = code == 2 ? "Done, but some steps failed" : "The move stopped";
-            F<TextBlock>("DoneText").Text = "Just start Hopover again - it retries the failed steps and only copies what's missing. The details show what went wrong.";
+            F<TextBlock>("DoneText").Text =
+                needReboot ? "Restart this PC: WSL needs it. Then start Hopover, connect with the code again and start the move. Done steps are skipped." :
+                linkLost ? "The link to the old PC was lost. Check that the old PC is on and shows the code, click 'Connect again' and start the move. Hopover copies only what is missing." :
+                "Just start Hopover again - it retries the failed steps and only copies what's missing. The details show what went wrong.";
+            F<UIElement>("BtnReconnect").Visibility = linkLost ? Visibility.Visible : Visibility.Collapsed;
             SetRoute(lastFrac, "STOPPED");
             if (currentPage != "PageImport") ShowPage("PageImport", "New PC");
             ToggleLogOpen("ImportLogBorder", "BtnImportLog");
@@ -1011,10 +1099,13 @@ namespace Hopover.App
 
         void OnClosing(object sender, System.ComponentModel.CancelEventArgs e)
         {
-            if (!engine.Running || closeConfirmed) return;
+            bool serving = serve != null && serve.Running;
+            if ((!engine.Running && !serving) || closeConfirmed) return;
             e.Cancel = true;
-            ShowDialog("Stop Hopover?", "Hopover is still working. You can close it though - start it again later and it picks up where it stopped.",
-                "Stop and close", "Keep working", () => { engine.Kill(); closeConfirmed = true; Window.Close(); });
+            string text = engine.Running
+                ? "Hopover is still working. You can close it though - start it again later and it picks up where it stopped."
+                : "The new PC copies through this link. Close Hopover here only when the move on the new PC is finished.";
+            ShowDialog("Stop Hopover?", text, "Stop and close", "Keep working", () => { engine.Kill(); closeConfirmed = true; Window.Close(); });
         }
 
         // ---------- screenshots (build check) ----------

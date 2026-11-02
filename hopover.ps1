@@ -126,6 +126,12 @@ function Invoke-Inventory {
         OnePassSsh = [bool]((Test-Path "$env:USERPROFILE\.config\1Password\ssh\agent.toml") -or
                      ((Get-Content "$env:USERPROFILE\.ssh\config" -ErrorAction SilentlyContinue) -match 'openssh-ssh-agent|1Password'))
         Certs      = @(Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.HasPrivateKey -and $_.NotAfter -gt (Get-Date) }).Count
+        # nvm-windows: "C:\Program Files\nodejs" is a link to the active node version in %APPDATA%\nvm.
+        NodeLink   = $(
+            $l = @([Environment]::GetEnvironmentVariable('NVM_SYMLINK', 'Machine'), [Environment]::GetEnvironmentVariable('NVM_SYMLINK', 'User')) | Where-Object { $_ } | Select-Object -First 1
+            $it = if ($l) { Get-Item -LiteralPath $l -Force -ErrorAction SilentlyContinue }
+            if ($it -and $it.LinkType -and $it.Target) { [pscustomobject]@{ Path = $it.FullName; Target = @($it.Target)[0] } }
+        )
         DriveLabels = $(
             $h = [ordered]@{}
             Get-Volume | Where-Object { $_.DriveType -eq 'Fixed' -and $_.DriveLetter } | ForEach-Object { $h["$($_.DriveLetter)"] = $_.FileSystemLabel }
@@ -186,10 +192,17 @@ function Publish-Tool {
     $od = @($env:OneDrive, $env:OneDriveCommercial, $env:OneDriveConsumer) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
     $targets = @("$Store\tool") + @(if ($od) { "$od\Hopover" })
     foreach ($t in $targets) {
-        New-Item -ItemType Directory -Path $t -Force | Out-Null
-        if ($env:HOPOVER_EXE -and (Test-Path $env:HOPOVER_EXE)) { Copy-Item $env:HOPOVER_EXE "$t\Hopover.exe" -Force }
-        else { robocopy $Root $t /E /XD .git dist app /NFL /NDL /NJH /NJS | Out-Null }
-        Write-Note "Tool copied to $t"
+        # A failed copy (the exe runs from this very folder, OneDrive busy) must not stop the export before the link opens.
+        try {
+            New-Item -ItemType Directory -Path $t -Force | Out-Null
+            if ($env:HOPOVER_EXE -and (Test-Path $env:HOPOVER_EXE)) {
+                $dst = Join-Path $t 'Hopover.exe'
+                if ([IO.Path]::GetFullPath($env:HOPOVER_EXE) -ieq [IO.Path]::GetFullPath($dst)) { Write-Note "Tool already in $t"; continue }
+                Copy-Item $env:HOPOVER_EXE $dst -Force -ErrorAction Stop
+            }
+            else { robocopy $Root $t /E /XD .git dist app /NFL /NDL /NJH /NJS | Out-Null }
+            Write-Note "Tool copied to $t"
+        } catch { Write-Warn "Tool not copied to ${t}: $($_.Exception.Message)" }
     }
 }
 
@@ -261,7 +274,7 @@ function Invoke-Export {
     # Export only reads and shares; a dry run would still stop WSL and open shares.
     if ($WhatIf) { throw 'export has no dry run. Run inventory to see what would move.' }
     $m = Get-ExportManifest
-    Invoke-Phase 'apps'     'Apps'                  { Export-Apps $Store }
+    Invoke-Phase 'apps'     'Apps'                  { Export-Apps $Store $Config }
     Invoke-Phase 'env'      'Environment variables' { Export-EnvVars $Store }
     Invoke-Phase 'settings' 'Settings, Wi-Fi, drives, printers' { Export-Settings $Store $Config }
     Invoke-Phase 'certs'    'Personal certificates' {
@@ -290,8 +303,10 @@ function Invoke-Import {
     Assert-Admin
     Connect-OldPc
     Write-Step "Copy the store from the old PC to $Store"
+    Send-Event STEP 'store start'
     $rc = Invoke-LinkCopy @('\\link\hopover-store', $Store, '/E', '/XD', 'logs', 'tool', '/XF', 'state-*.json', 'firewall-enabled.json', 'deselected.json', '/MT:8', '/R:1', '/W:1')
-    if ($rc -ge 8) { throw "copy of the store from the old PC failed (exit $rc)" }
+    if ($rc -ge 8) { Send-Event STEP 'store failed'; throw "copy of the store from the old PC failed (exit $rc)" }
+    Send-Event STEP 'store done'
     $m = Read-Json "$Store\manifest.json"
     if (-not $m -or -not $m.Profile) { throw "$Store\manifest.json is missing or empty" }
     $old = $m.Profile
@@ -314,10 +329,16 @@ function Invoke-Import {
         if (Test-Path "$Store\certs\*.pfx") { Import-Certs $Store (Get-CertPassword 'Certificate export password from the old PC') -WhatIf:$WhatIf }
         else { Write-Note 'none' }
     }
-    Invoke-Phase 'wsl'      'WSL distros'           { Import-Wsl $Store -WhatIf:$WhatIf }
     Wait-BackgroundApps $bg
+    # The installers changed PATH (docker, git, node): this process still has the old one.
+    $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+    # WSL after the apps: winget installs Microsoft.WSL, and wsl --install beside it would collide.
+    Invoke-Phase 'wsl'      'WSL distros'           { Import-Wsl $Store -WhatIf:$WhatIf }
     # After the installs: an installer would overwrite app settings imported before it.
-    Invoke-Phase 'settings' 'Windows and app settings, Wi-Fi, drives, printers' { Import-Settings $Store $old -WhatIf:$WhatIf }
+    Invoke-Phase 'settings' 'Windows and app settings, Wi-Fi, drives, printers' {
+        Import-Settings $Store $old -WhatIf:$WhatIf
+        Restore-NodeLink $m.NodeLink $old -WhatIf:$WhatIf
+    }
     Invoke-Phase 'docker'   'Docker named volumes'  { Import-DockerVolumes $Store -WhatIf:$WhatIf }
     Invoke-Phase 'tasks'    'Scheduled tasks (imported switched off)' { $notes.TaskFailed = @(Import-Tasks $Store $old $m.User -WhatIf:$WhatIf) }
 

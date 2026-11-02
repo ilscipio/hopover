@@ -14,6 +14,13 @@ namespace Hopover.Link
     /// <summary>Headless "Hopover.exe --link VERB": serve, proxy, copy, info, selftest, stub. Runs before any WPF code.</summary>
     public static class LinkMain
     {
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        static extern uint SetThreadExecutionState(uint flags);
+
+        /// <summary>No sleep while this thread lives: a move takes hours and network traffic does not count as activity.
+        /// Call it on a thread that lives as long as the process (the UI thread, or Main).</summary>
+        public static void KeepAwake() { SetThreadExecutionState(0x80000001); } // ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+
         public static string DefaultRendezvous()
         {
             try
@@ -80,6 +87,7 @@ namespace Hopover.Link
             var srv = new LinkServer(so);
             srv.Start();
             say("##LINK listening " + srv.TcpPort);
+            KeepAwake();
             Thread.Sleep(Timeout.Infinite);
             return 0;
         }
@@ -96,6 +104,7 @@ namespace Hopover.Link
             px.Start();
             say("##LINK path " + r.Path);
             say("##LINK proxy " + px.Port + " " + px.Token);
+            KeepAwake();
             done.WaitOne();
             return 0;
         }

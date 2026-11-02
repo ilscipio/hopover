@@ -54,7 +54,7 @@ function Write-Checklist([string]$Store, $Manifest, [hashtable]$Notes) {
     if ($Notes.Count) {
         $L.Add('## Problems from this run')
         foreach ($c in $Notes.EnvConflicts) { $L.Add("- [ ] Env var differs, new value kept: $c") }
-        foreach ($c in $Notes.CopyFailed) { $L.Add("- [ ] Copy failed (see logs\robocopy.log): $c") }
+        foreach ($c in $Notes.CopyFailed) { $L.Add("- [ ] Copy failed (see logs\robocopy-errors.log): $c") }
         foreach ($c in $Notes.TaskFailed) { $L.Add("- [ ] Task not imported: $c") }
         foreach ($c in $Notes.JunctionFailed) { $L.Add("- [ ] Junction not made; run as admin after SeaDrive sign-in: ``$c``") }
         foreach ($c in Get-Content "$Store\certs\not-exported.txt" -ErrorAction SilentlyContinue) { $L.Add("- [ ] Certificate: $c") }

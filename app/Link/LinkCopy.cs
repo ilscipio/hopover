@@ -161,7 +161,13 @@ namespace Hopover.Link
                         string r = rel0.Length == 0 ? name : rel0 + "\\" + name;
                         Entry e;
                         try { e = c.Mux.Stat(root, r); }
-                        catch (Exception ex) { Fail(c, pos[0] + "\\" + name, ex); continue; }
+                        catch (Exception ex)
+                        {
+                            // Deleted on the old PC since the scan: nothing to copy, not a failure (else the chunk fails forever).
+                            if (IsGone(ex)) Say(c, "SKIPPED source gone: " + pos[0] + "\\" + name);
+                            else Fail(c, pos[0] + "\\" + name, ex);
+                            continue;
+                        }
                         if (e == null || e.IsDir) { Fail(c, pos[0] + "\\" + name, new FileNotFoundException("not a file")); continue; }
                         e.Name = name;
                         queue.Add(new Job { Root = root, Rel = r, Dst = Path.Combine(dst, name), E = e });
@@ -172,7 +178,12 @@ namespace Hopover.Link
                     if (!c.List) Directory.CreateDirectory(Lp(dst));
                     List<Entry> top;
                     try { top = c.Mux.List(root, rel0); }
-                    catch (Exception ex) { Say(c, "ERROR source " + pos[0] + ": " + ex.Message); fatal = 16; top = null; }
+                    catch (Exception ex)
+                    {
+                        top = null;
+                        if (SourceGone(c, root, rel0)) Say(c, "SKIPPED source gone: " + pos[0]);
+                        else { Say(c, "ERROR source " + pos[0] + ": " + ex.Message); fatal = 16; }
+                    }
                     if (top != null) Walk(c, queue, root, rel0, dst, top);
                 }
             }
@@ -187,6 +198,15 @@ namespace Hopover.Link
             return code;
         }
 
+        // The server answers "not found" (its own text, not localised) for a path that does not exist.
+        static bool IsGone(Exception e) { return e is LinkException && e.Message == "not found"; }
+
+        static bool SourceGone(Ctx c, string root, string rel)
+        {
+            try { c.Mux.Stat(root, rel); return false; }
+            catch (Exception e) { return IsGone(e); }
+        }
+
         static void Fail(Ctx c, string path, Exception e)
         {
             Interlocked.Increment(ref c.Failed);
@@ -197,7 +217,11 @@ namespace Hopover.Link
         {
             foreach (var e in entries)
             {
-                if (e.IsReparse) continue;                          // /XJ: junctions and symlinks are never followed
+                if (e.IsReparse)                                    // /XJ: junctions and symlinks are never followed
+                {
+                    Say(c, "SKIPPED link " + Path.Combine(dstDir, e.Name));
+                    continue;
+                }
                 string childRel = rel.Length == 0 ? e.Name : rel + "\\" + e.Name;
                 string childDst = Path.Combine(dstDir, e.Name);
                 if (e.IsDir)
@@ -305,6 +329,7 @@ namespace Hopover.Link
             else offset = 0;
             long start = offset, written = offset, lastMeta = offset, reportedHere = 0;
             var inflight = new Queue<MuxClient.Call>();
+            MuxClient.Call current = null;
             try
             {
                 using (var fs = new FileStream(Lp(part), FileMode.OpenOrCreate, FileAccess.Write, FileShare.None, 1 << 20, FileOptions.SequentialScan))
@@ -323,6 +348,7 @@ namespace Hopover.Link
                             reqPos += len;
                         }
                         var call = inflight.Dequeue();
+                        current = call;
                         long expect = lens.Dequeue(), got = 0;
                         byte[] chunk;
                         while ((chunk = call.Next()) != null)
@@ -348,17 +374,30 @@ namespace Hopover.Link
                     }
                     fs.Flush();
                 }
+                // A big file (database, mailbox, log) can change while it is read and keep its size: the part file
+                // would then carry the old time and /XO would skip it forever. Check the source again.
+                if (e.Size >= PartStep)
+                {
+                    var now = c.Mux.Stat(j.Root, j.Rel);
+                    if (now == null || now.Size != e.Size || now.MTime != e.MTime)
+                    {
+                        if (now != null) { now.Name = e.Name; j.E = now; }
+                        throw new IOException("the source file changed while it was read");
+                    }
+                }
             }
             catch
             {
+                if (current != null) current.Cancel();
                 foreach (var call in inflight) call.Cancel();
                 throw;
             }
             // The part file is complete: times and attributes, then it takes the real name.
             string lpPart = Lp(part), lpDst = Lp(j.Dst);
             File.SetAttributes(lpPart, FileAttributes.Normal);
-            File.SetCreationTimeUtc(lpPart, new DateTime(e.CTime, DateTimeKind.Utc));
-            File.SetLastWriteTimeUtc(lpPart, new DateTime(e.MTime, DateTimeKind.Utc));
+            // An odd source time (before 1601) must not fail a file that is fully copied.
+            try { File.SetCreationTimeUtc(lpPart, new DateTime(e.CTime, DateTimeKind.Utc)); } catch (Exception) { }
+            try { File.SetLastWriteTimeUtc(lpPart, new DateTime(e.MTime, DateTimeKind.Utc)); } catch (Exception) { }
             if (File.Exists(lpDst))
             {
                 File.SetAttributes(lpDst, FileAttributes.Normal);

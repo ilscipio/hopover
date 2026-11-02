@@ -8,7 +8,7 @@
   "cRootExclude": ["Windows", "Program Files", "Program Files (x86)", "ProgramData", "Users", "Recovery", "PerfLogs", "System Volume Information", "$Recycle.Bin", "$WinREAgent", "$SysReset", "$Windows.~BT", "$Windows.~WS", "Config.Msi", "Documents and Settings", "MSOCache", "OneDriveTemp", "Intel", "AMD", "NVIDIA", "ESD", "inetpub", "Seafile", "hopover-store", "*.sys", "DumpStack.log*"],
 
   "appDataRoaming": [
-    "JetBrains", "Code\\User", "Cursor\\User", "KeePass", "Claude", "npm",
+    "JetBrains", "nvm", "Code\\User", "Cursor\\User", "KeePass", "Claude", "npm",
     "Notepad++", "FileZilla", "WinSCP.ini", "GitHub Desktop", "Postman", "Zed", "DBeaverData",
     "Microsoft\\Signatures", "Microsoft\\Templates", "Microsoft\\UProof", "Microsoft\\Sticky Notes",
     "Microsoft\\Windows\\Start Menu\\Programs", "Microsoft\\Windows\\PowerShell\\PSReadLine",
@@ -74,6 +74,22 @@
   "registryVendorsExclude": ["Microsoft", "Classes", "Policies", "Wow6432Node", "WOW6432Node", "AppDataLow", "Clients", "RegisteredApplications", "Intel", "NVIDIA Corporation", "AMD", "ATI", "Realtek", "Synaptics", "Elantech", "Dolby", "Waves", "Chromium", "Google", "Mozilla", "Microsoft Corporation", "Windows", "Hewlett-Packard", "Dell", "Lenovo", "ASUS", "Logitech"],
 
   "chunkDepth": { "c-root": 2, "drive": 2, "profile": 1 },
+
+  "_appMap": "Apps that winget export cannot match: uninstall DisplayName (regex) on the old PC -> winget id.",
+  "appMap": {
+    "^Google Chrome$": "Google.Chrome",
+    "^NVM for Windows": "CoreyButler.NVMforWindows",
+    "^WinSCP": "WinSCP.WinSCP",
+    "^Postman": "Postman.Postman",
+    "^MSYS2": "MSYS2.MSYS2",
+    "^Tesseract-OCR": "UB-Mannheim.TesseractOCR",
+    "^ILSpy": "icsharpcode.ILSpy",
+    "^GIMP": "GIMP.GIMP",
+    "^Ruby 3[.]1": "RubyInstallerTeam.Ruby.3.1",
+    "^Adobe Acrobat": "Adobe.Acrobat.Reader.64-bit",
+    "^Webex": "Cisco.Webex",
+    "^OpenSCAD": "OpenSCAD.OpenSCAD"
+  },
 
   "priorityApps": ["AgileBits.1Password", "DominikReichl.KeePass", "Microsoft.OneDrive", "Seafile.Seadrive", "Git.Git", "Microsoft.PowerShell", "Microsoft.WindowsTerminal"],
 

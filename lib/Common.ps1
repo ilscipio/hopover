@@ -80,7 +80,10 @@ function Get-WslDistros {
 function Test-WslReady {
     if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) { return $false }
     & wsl.exe --version *> $null
-    $LASTEXITCODE -eq 0
+    if ($LASTEXITCODE -ne 0) { return $false }
+    # winget installs the WSL app, but WSL 2 also needs the Virtual Machine Platform feature (and a restart).
+    $vmp = Get-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform -ErrorAction SilentlyContinue
+    -not $vmp -or $vmp.State -eq 'Enabled'
 }
 
 function Test-UnderAny([string]$Path, [string[]]$Roots) {

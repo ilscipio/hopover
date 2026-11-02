@@ -565,6 +565,7 @@
               <TextBlock x:Name="DoneTitle" Text="The move stopped" FontFamily="{StaticResource Display}" FontSize="26" TextWrapping="Wrap" Margin="0,14,0,0"/>
               <TextBlock x:Name="DoneText" Style="{StaticResource Dim}" Margin="0,4,0,0"/>
               <WrapPanel Margin="0,22,0,0">
+                <Button x:Name="BtnReconnect" Content="Connect again" Visibility="Collapsed" Margin="0,0,10,10"/>
                 <Button x:Name="BtnChecklist" Content="Open the checklist" Margin="0,0,10,10"/>
                 <Button x:Name="BtnTasks" Content="Turn on scheduled tasks" Margin="0,0,10,10"/>
                 <Button x:Name="BtnVerify" Content="Check again" Margin="0,0,10,10"/>
