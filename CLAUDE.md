@@ -16,7 +16,7 @@ User steps: `README.md`.
   (MADPPIPER-2022: ~697 GB, `C:\java` = 498 GB / 3.3M files).
 - NEVER run: `export`, `import`, `enable-tasks`, `cleanup`, or the exe's real flow.
   They need admin and two PCs. The exe was never clicked through for real.
-- 2026-11-02 pre-move review (not committed yet): keep-awake (both PCs), link-loss text + "Connect again",
+- 2026-11-02 pre-move review (commit d6e112c): keep-awake (both PCs), link-loss text + "Connect again",
   old PC "Open the link again" without a new scan, orphan `--link serve` kill, store-copy STEP events,
   apps: `appMap` (Chrome, NVM, ... that winget export misses), Python user scope, winget check;
   WSL after apps + VirtualMachinePlatform check + import/export verified; Docker fails loudly when the engine
