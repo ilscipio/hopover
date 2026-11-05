@@ -351,8 +351,39 @@ namespace Hopover.App
             engine.Start(engineDir, new[] { "share", "-Store", Store }, new Dictionary<string, string> { ["HOPOVER_EXE"] = exePath });
         }
 
+        /// <summary>The cloud clients on this PC: their folders stay out of the move and sync after sign-in.</summary>
+        static List<string> CloudClients()
+        {
+            var roots = new List<string>();
+            try
+            {
+                using (var k = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\SyncRootManager"))
+                    if (k != null) roots.AddRange(k.GetSubKeyNames());
+            }
+            catch (Exception) { }
+            string pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            string pf86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+            string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            Func<string, bool> root = id => roots.Any(r => r.IndexOf(id, StringComparison.OrdinalIgnoreCase) >= 0);
+            var names = new List<string>();
+            if (root("OneDrive") || Directory.Exists(Path.Combine(pf, "Microsoft OneDrive")) || Directory.Exists(Path.Combine(local, @"Microsoft\OneDrive"))) names.Add("OneDrive");
+            if (root("seadrive") || Directory.Exists(Path.Combine(pf, "SeaDrive"))) names.Add("SeaDrive");
+            if (root("DriveFS") || root("GoogleDrive") || Directory.Exists(Path.Combine(pf, @"Google\Drive File Stream"))) names.Add("Google Drive");
+            if (root("Dropbox") || Directory.Exists(Path.Combine(pf86, "Dropbox")) || Directory.Exists(Path.Combine(pf, "Dropbox"))) names.Add("Dropbox");
+            if (root("Box") || Directory.Exists(Path.Combine(pf, @"Box\Box"))) names.Add("Box");
+            if (root("iCloud") || Directory.Exists(Path.Combine(pf, @"Common Files\Apple\Internet Services"))) names.Add("iCloud");
+            if (root("Proton")) names.Add("Proton Drive");
+            if (root("pCloud")) names.Add("pCloud");
+            if (root("Nextcloud")) names.Add("Nextcloud");
+            if (root("ownCloud")) names.Add("ownCloud");
+            return names;
+        }
+
         void BeginScan()
         {
+            var cloud = CloudClients();
+            string list = cloud.Count < 2 ? string.Join("", cloud) : string.Join(", ", cloud.Take(cloud.Count - 1)) + " and " + cloud.Last();
+            F<TextBlock>("CloudNote").Text = cloud.Count == 0 ? "" : list + " stay out of the move: they sync after sign-in.";
             oldSwitches.Clear();
             foreach (var kv in BuildSwitches("OldSteps", ExportSteps.Select(s => s.Key), new string[0])) oldSwitches[kv.Key] = kv.Value;
             groups.Clear();

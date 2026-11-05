@@ -379,8 +379,7 @@
               <TextBlock x:Name="TotalSub" Style="{StaticResource Dim}" FontSize="13" LineHeight="19"/>
               <Button x:Name="BtnExport" Style="{StaticResource Primary}" Content="Prepare the move" FontSize="18" Margin="0,18,0,0" IsEnabled="False"/>
               <Button x:Name="BtnSavePlan" Style="{StaticResource Ghost}" Content="Save this list as text" HorizontalAlignment="Left" Margin="0,12,0,0"/>
-              <TextBlock Style="{StaticResource Eyebrow}" TextWrapping="Wrap" LineHeight="17" Margin="0,14,0,0"
-                         Text="OneDrive and SeaDrive sync after sign-in."/>
+              <TextBlock x:Name="CloudNote" Style="{StaticResource Eyebrow}" TextWrapping="Wrap" LineHeight="17" Margin="0,14,0,0"/>
             </StackPanel>
           </Border>
         </StackPanel>
