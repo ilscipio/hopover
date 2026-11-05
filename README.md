@@ -1,4 +1,4 @@
-☕ **Your move is free. If it works, I want a [coffee](https://buy.stripe.com/28E4gz8pMasZgLv1Snbsc00), or a [review](https://github.com/madppiper/hopover/issues/new?title=My%20move%20with%20Hopover) and a [star](https://github.com/madppiper/hopover).**
+☕ **Your move is free. If it works, I want a [coffee](https://buy.stripe.com/28E4gz8pMasZgLv1Snbsc00), or a [review](https://github.com/madppiper/hopover/issues/new?title=My%20move%20with%20Hopover) and a [star](https://github.com/madppiper/hopover). If it fails, I want a [ticket](https://github.com/madppiper/hopover/issues/new).**
 
 # Hopover
 
