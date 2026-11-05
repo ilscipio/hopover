@@ -1,65 +1,55 @@
 # Hopover
 
-Move your Windows PC to a new one over the network. Both PCs stay on, and you can keep working.
+### Your old PC, on your new PC. Everything, not just your files.
 
-**[Download Hopover.exe](https://github.com/madppiper/hopover/releases/latest/download/Hopover.exe)** · Windows 10 and 11 · one file, no install
+Hopover moves your apps, settings, dev tools and files to a new Windows PC over the network.
+Keep working while it runs. When it finishes, you just carry on.
 
-> Early version. The exe is not signed: at the SmartScreen warning, click **More info**, then **Run anyway**.
+**[⬇ Download Hopover.exe](https://github.com/madppiper/hopover/releases/latest/download/Hopover.exe)**
 
-## How it works
+Free for personal use · Windows 10 and 11 · One file, nothing to install
 
-| | Old PC | New PC |
-|---|---|---|
-| 1 | Start Hopover. Click **This is the old PC**. | |
-| 2 | Untick what stays behind. Click **Prepare the move**. | |
-| 3 | Read the pairing code. Leave the PC on. | Start Hopover. Click **This is the new PC**. Type the code. |
-| 4 | | Optional: switch on **Preview first** to get a text file of what would happen. |
-| 5 | | Click **Start the move**. |
-| 6 | Keep working. | Click **Catch up** to fetch your changes, as often as you like. |
+![Hopover shows what will move](docs/screenshot.png)
 
-Closing Hopover is safe. Start it again and it goes on where it stopped.
+## What it does
 
-## What moves
+- 📦 **Brings your apps back:** reinstalls them through winget, Chocolatey and the Store, and copies the rest
+- ⚙️ **Keeps your settings:** taskbar, wallpaper, Explorer, keyboard, Wi-Fi, and your app settings in the registry
+- 🐧 **Moves your dev setup:** WSL, Docker volumes, PostgreSQL, env vars, PATH, SSH keys, git logins
+- 📁 **Copies your files:** your profile, AppData, your folders and drives, big projects and all
+- 🔄 **Lets you keep working:** one click fetches whatever changed on the old PC since
+- 🛟 **Never throws anything away:** if two versions clash, both are kept
+- 👀 **Shows you first:** a preview lists everything it will do, before it does it
+- 🔒 **Stays between your PCs:** a pairing code and a direct, encrypted link, with no cloud in between
 
-| | |
-|---|---|
-| **Apps** | winget, Chocolatey, Store apps, Visual Studio workloads, programs without an installer |
-| **Dev setup** | WSL, Docker volumes, PostgreSQL, env vars and PATH, SSH keys, saved git logins, npm and pip tools |
-| **Files** | Your profile, AppData, folders on `C:\`, other drives, junctions and links |
-| **Windows** | Taskbar, Explorer, theme, wallpaper, mouse, keyboard, languages, power plan, Wi-Fi, hosts, features |
-| **Registry** | App settings, file types, Office, Visual Studio |
-| **Caches** | Gradle, npm, uv, Playwright, IDE indexes: untick what you do not want |
+## How to use it
 
-You sign in again to browsers, OneDrive, 1Password and Microsoft 365. Docker images come back with a pull.
+**On the old PC**
 
-## When both PCs have changes
+1. Start Hopover and click **This is the old PC**.
+2. Untick anything you want to leave behind.
+3. Click **Prepare the move** and note the code, like `3-alpha-bravo-cafe`.
 
-Nothing gets deleted. What moves aside goes to `C:\hopover-held`.
+**On the new PC**
 
-| Situation | Result |
-|---|---|
-| First move, file differs | The old PC wins. The new PC's file is kept aside. |
-| Changed on one PC | That version wins. |
-| Changed on both PCs | The new PC keeps its version. The old version is kept aside. |
-| Deleted on the old PC | Moved aside on the new PC. |
-| Only on the new PC | Stays. |
+4. Start Hopover and click **This is the new PC**.
+5. Type the code and click **Connect**.
+6. Click **Start the move**, and go get a coffee.
 
-## Finish
+**When you are ready to switch**
 
-1. Do a last **Catch up**, then work only on the new PC.
-2. Turn off the scheduled tasks on the old PC. Click **Turn on scheduled tasks** on the new PC.
-3. Click **Stop sharing** on the old PC.
-4. Delete `C:\hopover-store` on both PCs. It holds Wi-Fi passwords and tokens.
+7. Click **Catch up with the old PC** to fetch your latest changes.
+8. Open the checklist. It lists the few things left to do, like signing in to your browser.
 
-## Security
+That's it. You can close Hopover at any time. Start it again and it picks up where it stopped.
 
-The pairing code sets up an encrypted, direct link between the two PCs. No server carries your files.
+## Good to know
 
-## Build
+- This is an early version. Keep a backup of anything you can't lose.
+- Windows warns about the download because the exe is not signed. Click **More info**, then **Run anyway**.
+- Docker images download again with your next `docker-compose up`.
+- When you're done, delete `C:\hopover-store` on both PCs. It holds your Wi-Fi passwords and tokens.
 
-```powershell
-.\build.ps1          # needs the Visual Studio Build Tools
-.\build.ps1 -Shots   # also renders each screen to dist\shots
-```
+---
 
-Source available under the [PolyForm Noncommercial License](LICENSE.md).
+Source available under the [PolyForm Noncommercial License](LICENSE.md). To build it yourself, run `.\build.ps1`.
