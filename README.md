@@ -1,6 +1,6 @@
-# Hopover
+☕ **Your move is free. If it works, I want a [coffee](https://buy.stripe.com/28E4gz8pMasZgLv1Snbsc00), or a [review](https://github.com/madppiper/hopover/issues/new?title=My%20move%20with%20Hopover) and a [star](https://github.com/madppiper/hopover).**
 
-☕ **All I ask in return: if your move works, [buy me a coffee](https://buy.stripe.com/28E4gz8pMasZgLv1Snbsc00).** Pay what you want, €5 suggested.
+# Hopover
 
 ### Your old PC, on your new PC. Everything, not just your files.
 
