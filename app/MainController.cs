@@ -117,6 +117,8 @@ namespace Hopover.App
             Click("BtnImport", StartImport);
             Click("BtnCatchupNow", StartCatchup);
             Click("BtnCatchup", StartCatchup);
+            Click("BtnCleanup", AskCleanup);
+            Click("BtnDoneCleanup", AskCleanup);
             Click("BtnPreviewOpen", () => OpenFile(Path.Combine(Store, "preview.txt")));
             Click("BtnSavePlan", SavePlan);
             Click("BtnDoneCatchup", StartCatchup);
@@ -626,8 +628,34 @@ namespace Hopover.App
             if (serve != null) serve.Kill();
             engine.OnEvent = null;
             engine.OnExit = code => ShowDialog("Link stopped",
-                "Delete " + Store + " on both PCs when the new PC works: it holds Wi-Fi passwords and tokens.", "OK", null, null);
+                "Clean up this PC now? That deletes " + Store + " with its Wi-Fi passwords, tokens and WSL copy. Your own files stay.",
+                "Clean up", "Keep it for now", () => Purge(null));
             engine.Start(engineDir, new[] { "cleanup", "-Store", Store });
+        }
+
+        // Deletes Hopover's working folder. The user's data is elsewhere; what a move set aside stays in C:\hopover-held.
+        void Purge(Action after)
+        {
+            if (engine.Running) return;
+            engine.OnEvent = null;
+            engine.OnExit = code =>
+            {
+                if (code == 0)
+                    foreach (var b in new[] { "BtnCatchup", "BtnDoneCatchup", "BtnCatchupNow", "BtnDoneCleanup", "BtnCleanup" }) F<UIElement>(b).Visibility = Visibility.Collapsed;
+                if (after != null && code == 0) { after(); return; }
+                ShowDialog(code == 0 ? "All clean" : "Not cleaned up",
+                    code == 0 ? "The working folder is gone." + (Directory.Exists(@"C:\hopover-held") ? " C:\\hopover-held still holds what the move set aside: look through it, then delete it." : "")
+                              : "A file in " + Store + " is in use. Close the other programs and try again.", "OK", null, null);
+            };
+            engine.Start(engineDir, new[] { "cleanup", "-Purge", "-Store", Store });
+        }
+
+        void AskCleanup()
+        {
+            if (engine.Running) return;
+            ShowDialog("Clean up this PC?",
+                "This deletes " + Store + " with the Wi-Fi passwords, tokens and WSL copy in it. After that you can't catch up with the old PC any more. Your own files stay.",
+                "Clean up", "Not yet", () => Purge(null));
         }
 
         // ---------- NEW PC ----------
@@ -1246,6 +1274,16 @@ namespace Hopover.App
         void OnClosing(object sender, System.ComponentModel.CancelEventArgs e)
         {
             bool serving = serve != null && serve.Running;
+            // The move is over: offer once to leave no passwords behind.
+            if (!engine.Running && !serving && !closeConfirmed && File.Exists(Path.Combine(Store, "baseline.json")))
+            {
+                e.Cancel = true;
+                closeConfirmed = true;
+                ShowDialog("Clean up before you go?",
+                    "Hopover's working folder " + Store + " still holds Wi-Fi passwords, tokens and a WSL copy. Delete it now, or keep it if you want to catch up with the old PC again. Your own files stay.",
+                    "Clean up and close", "Just close", () => Purge(() => Window.Close()), () => Window.Close());
+                return;
+            }
             if ((!engine.Running && !serving) || closeConfirmed) return;
             e.Cancel = true;
             string text = engine.Running

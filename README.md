@@ -12,6 +12,11 @@
 </p>
 
 <p align="center">
+  Or with winget: <code>winget install Ilscipio.Hopover</code><br>
+  <sub>The package is in review at Microsoft. Until it's through, use the download above.</sub>
+</p>
+
+<p align="center">
   Free to move, pay on delivery. If it works, I want a <a href="https://buy.stripe.com/28E4gz8pMasZgLv1Snbsc00">coffee</a>, or a <a href="https://github.com/ilscipio/hopover/issues/new?title=My%20move%20with%20Hopover">review</a> and a <a href="https://github.com/ilscipio/hopover">star</a>.<br>
   If it fails, you owe me nothing. <a href="https://github.com/ilscipio/hopover/issues/new">Open a ticket</a> and I'll fix it :)
 </p>
@@ -74,10 +79,10 @@ So I built it. It's young - my own move is its first big test - so keep a backup
 
 ## Good to know
 
-- The exe isn't signed yet, so Windows warns you once. Click **More info**, then **Run anyway**.
+- The exe isn't signed yet, so a browser download makes Windows warn you once. Click **More info**, then **Run anyway**. winget skips that warning.
 - Docker images come back with your next pull. Browser profiles and OneDrive sync after you sign in.
 - Epic, GOG, EA and Ubisoft games download again.
-- When you're done, delete `C:\hopover-store` on both PCs. It holds your Wi-Fi passwords and tokens.
+- When you're done, click **Clean up** on both PCs, or say yes when you close Hopover. That removes its working folder with your Wi-Fi passwords and tokens. Your own files stay.
 
 &nbsp;
 

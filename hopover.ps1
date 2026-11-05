@@ -27,7 +27,9 @@ param(
     # export -Refresh: the old PC only updates what changed (no scan with sizes, no certificates, no link start).
     [switch]$Refresh,
     # import -Catchup: the new PC fetches what changed on the old PC since the last pass.
-    [switch]$Catchup
+    [switch]$Catchup,
+    # cleanup -Purge: also delete the store. Only Hopover's own working copy: C:\hopover-held stays for the user.
+    [switch]$Purge
 )
 
 $ErrorActionPreference = 'Continue'
@@ -449,7 +451,17 @@ function Invoke-Cleanup {
         Remove-Item "$Store\firewall-enabled.json"
         Write-Note "switched off $($rules.Count) firewall rules again"
     }
-    Write-Note "The store stays in $Store. It holds Wi-Fi passwords and env values: delete it when the new PC works."
+    if (-not $Purge) {
+        Write-Note "The store stays in $Store. It holds Wi-Fi passwords and env values: delete it when the new PC works."
+        return
+    }
+    # A wrong -Store must never empty another folder.
+    if ((Split-Path $Store -Leaf) -ne 'hopover-store') { throw "not a Hopover store: $Store" }
+    Write-Note "deleting $Store"
+    $script:Log = $null        # the log file lives in the store
+    Remove-Item -LiteralPath $Store -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $Store) { throw "$Store is still there: a file in it is in use. Close the other programs and try again." }
+    Write-Note 'Cleaned up.'
 }
 
 try {

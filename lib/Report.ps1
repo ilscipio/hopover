@@ -101,7 +101,7 @@ function Write-Checklist([string]$Store, $Manifest, [hashtable]$Notes) {
     $L.Add('- [ ] Stop the scheduled tasks on the old PC first. Then `hopover.ps1 enable-tasks` here (they arrive switched off), or they run twice.')
     $L.Add('- [ ] Last catch-up: stop working on the old PC, click **Catch up** here, then work only here.')
     $L.Add('- [ ] `hopover.ps1 verify` shows no gaps.')
-    $L.Add("- [ ] Old PC: ``hopover.ps1 cleanup``, then delete ``$Store`` on both PCs (it holds Wi-Fi passwords, tokens and saved logins).")
+    $L.Add("- [ ] When all works: click **Clean up** on both PCs. That deletes ``$Store`` (Wi-Fi passwords, tokens, saved logins). Then look through ``C:\hopover-held``.")
     $path = Join-Path $Store 'CHECKLIST.md'
     $L | Set-Content $path -Encoding UTF8
     $path

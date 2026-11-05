@@ -138,7 +138,7 @@ User steps: `README.md`.
   animated element, not in `ControlTemplate.Triggers`.
 - After any UI change: `.\build.ps1 -Shots` and look at `dist\shots\*.png`.
 - The engine never prompts when `HOPOVER_GUI` is set: it throws instead.
-- Nothing may delete data on either PC. Imported tasks arrive switched off.
+- Nothing may delete data on either PC. One exception, only on a user's click: `cleanup -Purge` deletes `C:\hopover-store` (Hopover's own working copy). `C:\hopover-held` stays. Imported tasks arrive switched off.
 - `C:\hopover-store` holds Wi-Fi keys, env tokens and .pfx files: ACL-locked, never in
   OneDrive or git.
 - OneDrive and SeaDrive folders are never copied; they sync after sign-in.
