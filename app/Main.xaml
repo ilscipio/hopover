@@ -347,6 +347,13 @@
               <StackPanel x:Name="ScanWait" VerticalAlignment="Center" HorizontalAlignment="Center">
                 <h:HopLoader Width="360" Height="82"/>
                 <TextBlock Text="Reading the folders" Style="{StaticResource Eyebrow}" Margin="0,12,0,0" HorizontalAlignment="Center"/>
+                <ItemsControl x:Name="ScanTicker" Width="600" Height="132" Margin="0,18,0,0" Focusable="False" IsHitTestVisible="False">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <TextBlock Text="{Binding Text}" Opacity="{Binding Fade}" FontFamily="{StaticResource Mono}" FontSize="12" Height="22" Foreground="{StaticResource Ink2}" TextAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
               </StackPanel>
             </Grid>
           </Grid>

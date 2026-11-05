@@ -66,6 +66,8 @@ namespace Hopover.App
         readonly ObservableCollection<StepRow> importRows = new ObservableCollection<StepRow>();
         readonly ObservableCollection<ActiveRow> active = new ObservableCollection<ActiveRow>();
         readonly ObservableCollection<CheckRow> checks = new ObservableCollection<CheckRow>();
+        readonly ObservableCollection<TickerRow> ticker = new ObservableCollection<TickerRow>();
+        readonly List<string> tickerPaths = new List<string>();
         readonly Dictionary<string, CheckBox> oldSwitches = new Dictionary<string, CheckBox>();
         readonly Dictionary<string, CheckBox> newSwitches = new Dictionary<string, CheckBox>();
         readonly Queue<(DateTime At, long Bytes)> rateSamples = new Queue<(DateTime, long)>();
@@ -102,6 +104,7 @@ namespace Hopover.App
             F<ItemsControl>("ImportSteps").ItemsSource = importRows;
             F<ItemsControl>("ActiveList").ItemsSource = active;
             F<ListBox>("CheckList").ItemsSource = checks;
+            F<ItemsControl>("ScanTicker").ItemsSource = ticker;
             SetupCoffee();
 
             Click("BtnOld", StartScan);
@@ -346,8 +349,11 @@ namespace Hopover.App
             F<Button>("BtnExport").IsEnabled = false;
             F<ProgressBar>("ScanBar").Value = 0;
             F<TextBlock>("ScanText").Text = "Listing the folders";
+            ticker.Clear();
+            tickerPaths.Clear();
             engine.OnEvent = (k, d) =>
             {
+                if (k == "SCANNING") { TickerAdd(d); return; }
                 if (k != "SCAN") return;
                 var p = d.Split(new[] { ' ' }, 3);
                 double i = double.Parse(p[0]), n = Math.Max(1, double.Parse(p[1]));
@@ -371,6 +377,16 @@ namespace Hopover.App
                 F<Button>("BtnExport").IsEnabled = true;
             };
             engine.Start(engineDir, new[] { "inventory", "-Store", Store, "-Speed", "balanced" });
+        }
+
+        // The newest path stands at the bottom in full ink; the ones above it fade away.
+        void TickerAdd(string path)
+        {
+            tickerPaths.Add(path);
+            if (tickerPaths.Count > 6) tickerPaths.RemoveAt(0);
+            ticker.Clear();
+            for (int i = 0; i < tickerPaths.Count; i++)
+                ticker.Add(new TickerRow { Text = tickerPaths[i], Fade = 1.0 - 0.16 * (tickerPaths.Count - 1 - i) });
         }
 
         void LoadGroups(object manifest)
@@ -1213,6 +1229,13 @@ namespace Hopover.App
                     F<ProgressBar>("ScanBar").Value = 1;
                     F<TextBlock>("ScanText").Text = "Scan done. Untick whatever should stay behind.";
                     F<Button>("BtnExport").IsEnabled = true;
+                    ShowPage("PageScan", "Old PC");
+                    break;
+                case "scan-reading":
+                    foreach (var kv in BuildSwitches("OldSteps", ExportSteps.Select(s => s.Key), new string[0])) oldSwitches[kv.Key] = kv.Value;
+                    foreach (var path in new[] { @"C:\Users\pp\.ssh", @"C:\Users\pp\.gradle", @"C:\Users\pp\AppData\Roaming\JetBrains", @"C:\java\workspace\slaides", @"C:\java\workspace\aivory-guard", @"C:\java\workspace\hopover" }) TickerAdd(path);
+                    F<ProgressBar>("ScanBar").Value = 0.37;
+                    F<TextBlock>("ScanText").Text = "Measured 693 of 1,873  ·  C:\\java\\workspace\\hopover";
                     ShowPage("PageScan", "Old PC");
                     break;
                 case "share":

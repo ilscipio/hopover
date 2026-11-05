@@ -62,6 +62,13 @@ namespace Hopover.App
         }
     }
 
+    /// <summary>One line of the moving path list during the scan. Older lines fade out.</summary>
+    public class TickerRow
+    {
+        public string Text { get; set; }
+        public double Fade { get; set; }
+    }
+
     public class StepRow : Bindable
     {
         string state = "pending";

@@ -22,6 +22,7 @@ function Get-CopyPlan($Config) {
         param([string]$Path, [string]$Why)
         if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return }
         if (Test-UnderAny $Path $skip) { return }
+        Send-Event SCANNING $Path
         $it = Get-Item -LiteralPath $Path -Force
         if ($it.Attributes -band [IO.FileAttributes]::ReparsePoint) { return }
         $items.Add([pscustomobject]@{ Path = $it.FullName; Kind = $(if ($it.PSIsContainer) { 'dir' } else { 'file' }); Why = $Why; Group = $it.FullName })
@@ -79,6 +80,7 @@ function Get-CopyPlan($Config) {
 
 function Split-PlanItem($Item, [int]$Depth, [string[]]$ExNames, [string[]]$ExPaths) {
     if ($Item.Kind -ne 'dir' -or $Depth -le 0) { return $Item }
+    Send-Event SCANNING $Item.Path
     $subs = @(Get-ChildItem -LiteralPath $Item.Path -Directory -Force -ErrorAction SilentlyContinue | Where-Object {
         -not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -and
         -not (Test-NameExcluded $_.Name $ExNames) -and -not (Test-UnderAny $_.FullName $ExPaths)
@@ -115,6 +117,7 @@ function Get-ProgramFolders($Config) {
     # The installed programs that winget cannot match, with their folder and uninstall key: apps\programs.json.
     $file = Join-Path $Store 'apps\programs.json'
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { return @() }
+    Send-Event SCANNING 'Installed programs (asking winget)'
     $tmp = Join-Path $env:TEMP 'hopover-scan-winget.json'
     $names = Get-UnmatchedNames (winget export -o $tmp --accept-source-agreements 2>&1)
     Remove-Item $tmp -ErrorAction SilentlyContinue
@@ -253,7 +256,7 @@ function Measure-Plan($Plan, [string[]]$Excludes, [string]$Speed) {
     $pool = [Hopover.RoboPool]::new($jobs.ToArray(), ((Get-SpeedProfile $Speed).Workers + 2), $Speed, $true)
     $pool.Start()
     $script:measured = 0
-    Wait-Pool $pool {} {
+    Wait-Pool $pool { param($j) Send-Event SCANNING $j.Path } {
         param($j)
         $Plan[$j.Index] | Add-Member -NotePropertyName Bytes -NotePropertyValue $j.Bytes -Force
         $Plan[$j.Index] | Add-Member -NotePropertyName Files -NotePropertyValue $j.Files -Force

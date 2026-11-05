@@ -13,7 +13,7 @@ namespace Hopover.App
     /// </summary>
     static class Screenshots
     {
-        static readonly string[] Pages = { "pledge", "welcome", "scan", "share", "connect", "import", "checkpoint", "done", "done-paid", "pledge-signed", "share-waiting", "connect-noroute" };
+        static readonly string[] Pages = { "pledge", "welcome", "scan-reading", "scan", "share", "connect", "import", "checkpoint", "done", "done-paid", "pledge-signed", "share-waiting", "connect-noroute" };
 
         public static void Run(Application app, string dir)
         {
