@@ -22,7 +22,7 @@
 </p>
 
 <p align="center">
-  <sub>Windows 10 and 11 - one file, nothing to install, no account - <a href="https://www.ilscipio.com/en/apps/hopover/">website and docs</a> - <a href="https://www.ilscipio.com/apps/hopover/">auf Deutsch</a></sub>
+  <sub>Windows 10 and 11 - one file, nothing to install, no account - <a href="https://www.ilscipio.com/en/apps/hopover/">website</a> - <a href="https://www.ilscipio.com/en/apps/hopover/docs/">docs</a> - <a href="https://www.ilscipio.com/apps/hopover/">auf Deutsch</a></sub>
 </p>
 
 &nbsp;

@@ -770,7 +770,7 @@ namespace Hopover.App
             app("Google Chrome", "Chrome", "Sign in and turn on sync: bookmarks, passwords and extensions come back.");
             app("Firefox", "Firefox", "Sign in to sync. Your profile came with the move.");
             app("Docker Desktop", "Docker Desktop", "Start it once and sign in. Then catch up, so that the Docker volumes arrive.");
-            app("JetBrains Toolbox", "JetBrains Toolbox", "Sign in: your IDE licences come with the account.");
+            app("JetBrains Toolbox", "JetBrains Toolbox", "Sign in: your IDE licenses come with the account.");
             steps.Add(("Windows Hello", "Set up your face, fingerprint or PIN. This one belongs to this PC.", () => OpenFile("ms-settings:signinoptions")));
             return steps;
         }
