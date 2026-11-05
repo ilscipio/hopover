@@ -45,3 +45,20 @@ jobs:
           $tag = "v1.0.$env:GITHUB_RUN_NUMBER"
           gh release create $tag dist\Hopover.exe --title "Hopover $tag" --notes "Built from $sha. The exe is not signed: Windows SmartScreen asks once (More info, Run anyway)." --latest
           if ($LASTEXITCODE -ne 0) { throw 'gh release failed' }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding ascii
+        id: publish
+
+      # A new release also goes to winget. Needs the repo secret WINGET_TOKEN (a GitHub token with public_repo)
+      # and the package in the catalog: without them this step says so and the release still stands.
+      - name: Update winget
+        shell: powershell
+        continue-on-error: true
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          TAG: ${{ steps.publish.outputs.tag }}
+        run: |
+          if (-not $env:WINGET_TOKEN) { Write-Host 'No WINGET_TOKEN secret: winget stays as it is.'; exit 0 }
+          $url = "https://github.com/ilscipio/hopover/releases/download/$env:TAG/Hopover.exe"
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe -UseBasicParsing
+          .\wingetcreate.exe update Ilscipio.Hopover --version $env:TAG.TrimStart('v') --urls $url --submit --token $env:WINGET_TOKEN
+          if ($LASTEXITCODE -ne 0) { throw "wingetcreate failed (exit $LASTEXITCODE)" }
