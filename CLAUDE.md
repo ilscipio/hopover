@@ -41,6 +41,7 @@ User steps: `README.md`.
 ## Publishing (2026-11-05)
 
 - GitLab (`ilscipio/projects/hopover`) is the source. GitHub `ilscipio/hopover` (public) is a mirror of it: change code on GitLab only.
+- winget id `Ilscipio.Hopover` (portable). Each release needs a new manifest in microsoft/winget-pkgs.
 - `.github/workflows/release.yml` on GitHub: on a push that touches app, engine or config, it builds on `windows-2022`, runs the
   selftest and publishes a release. Stable link: `https://github.com/ilscipio/hopover/releases/latest/download/Hopover.exe`.
 - `.gitlab-ci.yml` deploys only the meeting point (`rendezvous\`). `dist\Hopover.exe` in git is a local build; the release is built new.
@@ -68,6 +69,8 @@ User steps: `README.md`.
 - Old PC: `inventory` builds the plan and measures it in parallel (`robocopy /L` in the
   C# pool) -> `C:\hopover-store\manifest.json`. Big trees are split into chunks
   (`chunkDepth` per kind; a `files` chunk = the files directly in a folder, no `/E`).
+  The list reaches the GUI before the measuring (`plan-partial.json`, `##PLANREADY`); sizes follow per chunk (`##SIZE bytes files group`).
+  The scan runs one worker per core (at least 8), below-normal CPU, normal disk priority (`Native.Lower` "scan").
   `Group` = the top-level folder; the GUI shows groups, `deselected.json` drops groups.
 - `export`: winget, env, Windows settings (`registry`, `registryValues`, languages, time
   zone, power plan), app registry keys (every `HKCU\Software\<vendor>` except
@@ -93,6 +96,7 @@ User steps: `README.md`.
   (`Spake2.cs`, `P256.cs` on BigInteger, variable time), AES-GCM via bcrypt.dll (`AesGcm.cs`), frames
   `u32 len | GCM(type+payload) | tag`, per-direction keys (`Channel.cs`). A wrong confirmation burns the code
   (`LinkServer` makes a new one). The joining PC (role A) sends `Use` on the connection it keeps.
+- Direct cable (2026-11-05): a GUI choice ("Direct cable"), same code path as LAN with 75 s of search. Discovery sends on every interface, so two PCs on 169.254.x.x find each other; each round collects all answers and tries a wired NIC before Wi-Fi, VPN and virtual NICs last (`LinkClient.Rate`). Path `cable`. Real cable untested.
 - Paths: (1) LAN: UDP broadcast 47801 with the room hash, TCP 47800. (2) Internet: HTTP POST
   `http://hop.ilscipio.com/v1/meet` (long poll; `config\include.json` `link.rendezvous`; server in `rendezvous\`),
   then TCP hole punching from the same local port. (3) Nothing else. THERE IS NO DATA RELAY.

@@ -72,7 +72,8 @@ namespace Hopover.App
         readonly Dictionary<string, CheckBox> newSwitches = new Dictionary<string, CheckBox>();
         readonly Queue<(DateTime At, long Bytes)> rateSamples = new Queue<(DateTime, long)>();
         readonly List<AppRow> installed = new List<AppRow>();
-        bool checkpointShown, previewRun;
+        bool checkpointShown, previewRun, scanDirty;
+        System.Windows.Threading.DispatcherTimer scanTimer;
         bool linkLost, needReboot, serveStopping;
         Action dialogCancel;
         int sumApps, sumTasks, sumDistros;
@@ -132,7 +133,7 @@ namespace Hopover.App
             Click("DlgCancel", () => { HideDialog(); var a = dialogCancel; dialogCancel = null; a?.Invoke(); });
 
             F<TextBox>("CodeBox").KeyDown += (s, e) => { if (e.Key == Key.Enter) _ = Connect(); };
-            foreach (var r in new[] { "ModeLan", "ModeNet" })
+            foreach (var r in new[] { "ModeLan", "ModeCable", "ModeNet" })
                 F<RadioButton>(r).Checked += (s, e) => UpdateModeHint();
             UpdateModeHint();
             Window.Closed += (s, e) => { try { if (serve != null) serve.Kill(); if (proxy != null) proxy.Dispose(); } catch { } };
@@ -354,6 +355,8 @@ namespace Hopover.App
             engine.OnEvent = (k, d) =>
             {
                 if (k == "SCANNING") { TickerAdd(d); return; }
+                if (k == "PLANREADY") { ShowPartialPlan(); return; }
+                if (k == "SIZE") { AddSize(d); return; }
                 if (k != "SCAN") return;
                 var p = d.Split(new[] { ' ' }, 3);
                 double i = double.Parse(p[0]), n = Math.Max(1, double.Parse(p[1]));
@@ -368,7 +371,11 @@ namespace Hopover.App
                     F<TextBlock>("ScanText").Text = "The scan failed. The log is in " + Store + "\\logs.";
                     return;
                 }
+                scanTimer?.Stop();
+                // The final list sorted by size, with the ticks made during the measuring.
+                var off = new HashSet<string>(groups.Where(g => !g.Include).Select(g => g.Path), StringComparer.OrdinalIgnoreCase);
                 LoadGroups(m);
+                foreach (var g in groups) if (off.Contains(g.Path)) g.Include = false;
                 F<UIElement>("ScanWait").Visibility = Visibility.Collapsed;
                 F<ProgressBar>("ScanBar").Value = 1;
                 F<TextBlock>("ScanText").Text = "Scan done. Untick whatever should stay behind.";
@@ -377,6 +384,43 @@ namespace Hopover.App
                 F<Button>("BtnExport").IsEnabled = true;
             };
             engine.Start(engineDir, new[] { "inventory", "-Store", Store, "-Speed", "balanced" });
+        }
+
+        // The rows come up as soon as the folders are listed; the measuring takes much longer than the listing.
+        void ShowPartialPlan()
+        {
+            var m = Json.Read(Path.Combine(Store, "plan-partial.json"));
+            if (m == null) return;
+            LoadGroups(m);
+            foreach (var g in groups) g.Measuring = true;
+            F<UIElement>("ScanWait").Visibility = Visibility.Collapsed;
+            scanDirty = true;
+            if (scanTimer == null)
+            {
+                scanTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+                scanTimer.Tick += (s, e) => RefreshSizes();
+            }
+            scanTimer.Start();
+        }
+
+        void AddSize(string data)
+        {
+            var p = data.Split(new[] { ' ' }, 3);
+            if (p.Length < 3) return;
+            var row = groups.FirstOrDefault(g => string.Equals(g.Path, p[2], StringComparison.OrdinalIgnoreCase));
+            if (row == null) return;
+            row.Bytes += long.Parse(p[0]);
+            row.Files += long.Parse(p[1]);
+            scanDirty = true;
+        }
+
+        void RefreshSizes()
+        {
+            if (!scanDirty || groups.Count == 0) return;
+            scanDirty = false;
+            double max = Math.Max(1, groups.Max(g => g.Bytes));
+            foreach (var g in groups) g.BarRatio = Math.Sqrt(g.Bytes / max);
+            UpdateTotal();
         }
 
         // The newest path stands at the bottom in full ink; the ones above it fade away.
@@ -548,7 +592,7 @@ namespace Hopover.App
         }
 
         static string PathText(string path) =>
-            path == "lan" ? "LAN  ·  DIRECT" : path == "internet" ? "INTERNET  ·  DIRECT" : "NO ROUTE";
+            path == "cable" ? "CABLE  ·  DIRECT" : path == "lan" ? "LAN  ·  DIRECT" : path == "internet" ? "INTERNET  ·  DIRECT" : "NO ROUTE";
 
         void SetBadge(string border, string text, string label, bool good)
         {
@@ -565,7 +609,9 @@ namespace Hopover.App
         {
             F<TextBlock>("ModeHint").Text = F<RadioButton>("ModeNet").IsChecked == true
                 ? "Both PCs reach the internet. A small meeting point only swaps addresses; the files go straight from PC to PC."
-                : "Both PCs on the same router or Wi-Fi. The new PC finds the old PC by the code.";
+                : F<RadioButton>("ModeCable").IsChecked == true
+                ? "One LAN cable from PC to PC, or a Thunderbolt or USB4 cable if both PCs have those ports. A plain USB-C cable cannot link two PCs. Plug it in, give Windows a minute, then connect."
+                : "Both PCs on the same router or Wi-Fi. The new PC finds the old PC by the code. If a cable joins them too, the cable wins.";
         }
 
         void ToggleLogOpen(string border, string button)
@@ -608,6 +654,7 @@ namespace Hopover.App
         {
             string code = F<TextBox>("CodeBox").Text.Trim();
             bool net = F<RadioButton>("ModeNet").IsChecked == true;
+            bool cable = F<RadioButton>("ModeCable").IsChecked == true;
             F<UIElement>("ConnectBadge").Visibility = Visibility.Collapsed;
             if (!LinkClient.LooksLikeCode(code))
             {
@@ -621,7 +668,8 @@ namespace Hopover.App
             StopLinkClient();
             string rv = LinkRendezvous();
             Action<string> status = s => Window.Dispatcher.BeginInvoke(new Action(() => SetConnectMsg(s, false)));
-            var res = await Task.Run(() => LinkClient.Connect(code, net ? "internet" : "lan", null, rv, 47801, status, new Rendezvous.Holder()));
+            // A fresh cable: Windows needs up to a minute before it gives the port an address.
+            var res = await Task.Run(() => LinkClient.Connect(code, net ? "internet" : "lan", null, rv, 47801, status, new Rendezvous.Holder(), cable ? 75 : 25));
             F<Button>("BtnConnect").IsEnabled = true;
             F<UIElement>("ConnectSpin").Visibility = Visibility.Collapsed;
             if (res.Channel == null)
@@ -632,7 +680,8 @@ namespace Hopover.App
                 {
                     SetBadge("ConnectBadge", "ConnectBadgeText", "NO ROUTE", false);
                     F<UIElement>("ConnectBadge").Visibility = Visibility.Visible;
-                    SetConnectMsg("No direct route. Put both PCs on the same network, or use a USB disk.", true);
+                    SetConnectMsg(cable ? "No PC found on the cable. Check that Hopover shows the code on the old PC. A plain USB-C cable cannot link two PCs: use a LAN cable."
+                                        : "No direct route. Put both PCs on the same network, join them with a LAN cable, or use a USB disk.", true);
                 }
                 return;
             }

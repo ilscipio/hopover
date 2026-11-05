@@ -252,8 +252,9 @@ function Measure-Plan($Plan, [string[]]$Excludes, [string]$Speed) {
     $opts = @('/L', '/XJ', '/BYTES', '/NFL', '/NDL', '/NJH', '/R:0', '/W:0')
     $jobs = New-Object 'System.Collections.Generic.List[Hopover.RoboJob]'
     for ($i = 0; $i -lt $Plan.Count; $i++) { $jobs.Add((New-RoboJob $i $Plan[$i] $Plan[$i].Path $probe $opts $Excludes)) }
-    # Scanning is light: more workers than copying.
-    $pool = [Hopover.RoboPool]::new($jobs.ToArray(), ((Get-SpeedProfile $Speed).Workers + 2), $Speed, $true)
+    # Scanning is light: one worker per CPU core, at least 8, on normal disk priority. Somebody waits for this list.
+    $workers = [math]::Max(8, [Environment]::ProcessorCount)
+    $pool = [Hopover.RoboPool]::new($jobs.ToArray(), $workers, 'scan', $true)
     $pool.Start()
     $script:measured = 0
     Wait-Pool $pool { param($j) Send-Event SCANNING $j.Path } {
@@ -262,6 +263,7 @@ function Measure-Plan($Plan, [string[]]$Excludes, [string]$Speed) {
         $Plan[$j.Index] | Add-Member -NotePropertyName Files -NotePropertyValue $j.Files -Force
         $script:measured++
         Send-Event SCAN "$($script:measured) $($Plan.Count) $($j.Path)"
+        Send-Event SIZE "$($j.Bytes) $($j.Files) $($Plan[$j.Index].Group)"
     } {}
 }
 

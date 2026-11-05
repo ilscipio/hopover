@@ -240,10 +240,25 @@ namespace Hopover.Link
             var ch = Finish(s, w, "lan", out hs);
             if (hs == Hs.WrongCode) return new ConnectResult { Error = "wrong-code" };
             if (ch == null) return new ConnectResult { Error = "no-route", Detail = "handshake " + hs };
-            string path = IsPrivate(ep.Address) ? "lan" : "internet";
+            string path = Net.IsLinkLocal(ep.Address) ? "cable" : IsPrivate(ep.Address) ? "lan" : "internet";
             try { Announce(ch, path); }
             catch (Exception e) { ch.Close(); return new ConnectResult { Error = "no-route", Detail = e.Message }; }
             return new ConnectResult { Channel = ch, Path = path };
+        }
+
+        /// <summary>
+        /// The best way to the old PC when it answers on several: a cable before Wi-Fi, the faster one first.
+        /// VPNs and virtual switches last: they report 100 Gbit/s and carry nothing of the kind.
+        /// </summary>
+        static long Rate(System.Net.NetworkInformation.NetworkInterface ni)
+        {
+            string d = (ni.Name + " " + ni.Description).ToLowerInvariant();
+            if (ni.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Tunnel ||
+                ni.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Ppp ||
+                d.Contains("wintun") || d.Contains("wireguard") || d.Contains("vethernet") || d.Contains("hyper-v") ||
+                d.Contains("virtual") || d.Contains("vpn") || d.Contains("tap-")) return 0;
+            bool wifi = ni.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Wireless80211;
+            return (wifi ? 1L << 40 : 1L << 50) + Math.Max(0, ni.Speed);
         }
 
         static ConnectResult ConnectLan(string code, byte[] w, int udpPort, Action<string> status, int seconds, Rendezvous.Holder cancel)
@@ -251,6 +266,7 @@ namespace Hopover.Link
             string room = LinkServer.RoomOf(code);
             byte[] probe = Encoding.ASCII.GetBytes("HOPOVER-DISCOVER1 " + room);
             var socks = new List<Socket>();
+            var rate = new Dictionary<Socket, long>();
             var bcast = new List<IPAddress> { IPAddress.Broadcast };
             try
             {
@@ -268,6 +284,7 @@ namespace Hopover.Link
                             s.EnableBroadcast = true;
                             s.Bind(new IPEndPoint(ua.Address, 0));
                             socks.Add(s);
+                            rate[s] = Rate(ni);
                             var bip = new IPAddress(b);
                             if (!bcast.Any(x => x.Equals(bip))) bcast.Add(bip);
                         }
@@ -283,6 +300,9 @@ namespace Hopover.Link
                     foreach (var s in socks)
                         foreach (var b in bcast)
                             try { s.SendTo(probe, new IPEndPoint(b, udpPort)); } catch { }
+                    // Every answer of this round first: the old PC can answer on Wi-Fi a moment before it answers on the cable.
+                    var found = new List<KeyValuePair<long, IPEndPoint>>();
+                    string name = null;
                     DateTime round = DateTime.UtcNow.AddMilliseconds(1200);
                     while (DateTime.UtcNow < round)
                     {
@@ -297,10 +317,15 @@ namespace Hopover.Link
                             int tcpPort;
                             if (p.Length < 2 || p[0] != "HOPOVER-HERE1" || !int.TryParse(p[1], out tcpPort)) continue;
                             var ep = new IPEndPoint(((IPEndPoint)from).Address, tcpPort);
-                            status("Found " + (p.Length > 2 ? p[2] : ep.Address.ToString()) + ", checking the code");
-                            var r = ConnectDirect(ep, w, status);
-                            if (r.Channel != null || r.Error == "wrong-code") return r;
+                            if (p.Length > 2) name = p[2];
+                            if (!found.Any(f => f.Value.Equals(ep))) found.Add(new KeyValuePair<long, IPEndPoint>(rate[s], ep));
                         }
+                    }
+                    foreach (var f in found.OrderByDescending(x => x.Key))
+                    {
+                        status("Found " + (name ?? f.Value.Address.ToString()) + ", checking the code");
+                        var r = ConnectDirect(f.Value, w, status);
+                        if (r.Channel != null || r.Error == "wrong-code") return r;
                     }
                 }
                 return new ConnectResult { Error = "no-route" };

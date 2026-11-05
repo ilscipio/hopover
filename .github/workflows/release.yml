@@ -41,6 +41,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $sha = $env:GITHUB_SHA.Substring(0, 7)
-          $tag = 'v' + (Get-Date -Format 'yyyy.MM.dd') + '-' + $sha
+          # A plain version number: winget compares versions.
+          $tag = "v1.0.$env:GITHUB_RUN_NUMBER"
           gh release create $tag dist\Hopover.exe --title "Hopover $tag" --notes "Built from $sha. The exe is not signed: Windows SmartScreen asks once (More info, Run anyway)." --latest
           if ($LASTEXITCODE -ne 0) { throw 'gh release failed' }

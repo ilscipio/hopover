@@ -28,14 +28,18 @@ namespace Hopover.App
     {
         bool include = true;
         double barRatio;
+        long bytes;
+        bool measuring;
         public bool Include { get => include; set => Set(ref include, value); }
         public string Path { get; set; }
         public string Name { get; set; }
         public string Why { get; set; }
-        public long Bytes { get; set; }
+        public long Bytes { get => bytes; set { bytes = value; Raise(nameof(SizeText)); } }
         public long Files { get; set; }
         public double BarRatio { get => barRatio; set => Set(ref barRatio, value); }
-        public string SizeText => Fmt.Size(Bytes);
+        /// <summary>Still measured: the size grows, and a row with nothing yet shows dots.</summary>
+        public bool Measuring { get => measuring; set { measuring = value; Raise(nameof(SizeText)); } }
+        public string SizeText => Measuring && bytes == 0 ? "..." : Fmt.Size(bytes);
         /// <summary>The crate code: HOP- and a running number.</summary>
         public string Code { get; set; }
         public string Sub => WhyText + "  ·  " + Path;

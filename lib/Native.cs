@@ -21,9 +21,11 @@ namespace Hopover
 
         // gentle: idle CPU, low I/O. balanced: below-normal CPU, low I/O. full: normal.
         // Low I/O is the "background" class: the user's own programs get the disk first.
+        // scan: below-normal CPU, normal I/O. The scan only reads folder entries, and somebody waits for it.
         public static void Lower(Process p, string speed)
         {
             if (speed == "full") return;
+            if (speed == "scan") { try { p.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { } return; }
             try { p.PriorityClass = speed == "gentle" ? ProcessPriorityClass.Idle : ProcessPriorityClass.BelowNormal; } catch { }
             try { int io = 1; NtSetInformationProcess(p.Handle, ProcessIoPriority, ref io, 4); } catch { }
         }

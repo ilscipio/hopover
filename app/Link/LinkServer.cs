@@ -42,6 +42,13 @@ namespace Hopover.Link
             catch { }
         }
 
+        /// <summary>169.254.x.x: two PCs joined by a cable, with no router to hand out addresses.</summary>
+        public static bool IsLinkLocal(IPAddress a)
+        {
+            byte[] b = a.GetAddressBytes();
+            return b.Length == 4 && b[0] == 169 && b[1] == 254;
+        }
+
         public static List<IPAddress> LocalIPv4()
         {
             var res = new List<IPAddress>();
@@ -170,7 +177,9 @@ namespace Hopover.Link
                 Socket s;
                 try { s = tcp.AcceptSocket(); } catch { return; }
                 var sock = s;
-                new Thread(() => OnSocket(sock, "lan")) { IsBackground = true }.Start();
+                string kind = "lan";
+                try { if (Net.IsLinkLocal(((IPEndPoint)sock.RemoteEndPoint).Address)) kind = "cable"; } catch (Exception) { }
+                new Thread(() => OnSocket(sock, kind)) { IsBackground = true }.Start();
             }
         }
 

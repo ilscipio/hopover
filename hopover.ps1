@@ -112,6 +112,9 @@ function Invoke-Inventory {
     # Export measures too when it has to scan again: without sizes the progress bar and the
     # largest-first order break on the new PC.
     elseif ($Sizes -or $Command -in 'inventory', 'export') {
+        # The list is ready now; only the sizes are missing. The GUI shows it and fills the sizes in as they arrive.
+        Write-Json ([pscustomobject]@{ Plan = $plan }) "$Store\plan-partial.json"
+        Send-Event PLANREADY "$($plan.Count)"
         Write-Note "$($plan.Count) chunks; measuring them in parallel"
         Measure-Plan $plan @(Get-RobocopyExcludes $Config) $Speed
         $total = ($plan | Measure-Object Bytes -Sum).Sum

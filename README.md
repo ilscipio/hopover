@@ -47,6 +47,8 @@ Nervous? Switch on **Preview first** and you get a text file of everything Hopov
 
 You can close Hopover any time. It picks up where it stopped.
 
+**Want it faster?** Plug one LAN cable straight from PC to PC and choose **Direct cable**. No router, no setup. Thunderbolt and USB4 cables work the same way if both PCs have those ports. A plain USB-C cable can't link two PCs - that's a hardware limit, sorry.
+
 <table>
   <tr>
     <td width="50%"><img src="docs/moving.png" alt="The move in progress"></td>

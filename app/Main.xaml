@@ -463,9 +463,10 @@
           <Border Style="{StaticResource Card}" Margin="0,20,0,0">
             <StackPanel>
               <TextBlock Text="WHERE IS THE OLD PC" Style="{StaticResource Eyebrow}" Margin="0,0,0,10"/>
-              <Border BorderBrush="{StaticResource Ink}" BorderThickness="2" HorizontalAlignment="Left" Width="460">
-                <UniformGrid Columns="2">
+              <Border BorderBrush="{StaticResource Ink}" BorderThickness="2" HorizontalAlignment="Left">
+                <UniformGrid Columns="3">
                   <RadioButton x:Name="ModeLan" GroupName="linkmode" Style="{StaticResource Segment}" Content="Same network" IsChecked="True" MinWidth="170"/>
+                  <RadioButton x:Name="ModeCable" GroupName="linkmode" Style="{StaticResource Segment}" Content="Direct cable" MinWidth="170"/>
                   <RadioButton x:Name="ModeNet" GroupName="linkmode" Style="{StaticResource Segment}" Content="Over the internet" MinWidth="170"/>
                 </UniformGrid>
               </Border>
