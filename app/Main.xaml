@@ -360,9 +360,16 @@
           </Grid>
         </Grid>
 
-        <StackPanel Grid.Column="2" Margin="0,4,0,0">
+        <!-- The bottom block keeps its place: the code and the button must never leave the screen. The switches scroll. -->
+        <Grid Grid.Column="2" Margin="0,4,0,0">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+          </Grid.RowDefinitions>
           <TextBlock Text="ALSO MOVE" Style="{StaticResource Eyebrow}" Margin="0,0,0,12"/>
-          <Border BorderBrush="{StaticResource Ink}" BorderThickness="0,2,0,0" Padding="0,16,0,0">
+          <Border Grid.Row="1" BorderBrush="{StaticResource Ink}" BorderThickness="0,2,0,0" Padding="0,16,0,0">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
             <StackPanel>
               <StackPanel x:Name="OldSteps"/>
               <StackPanel x:Name="OldCertPanel" Visibility="Collapsed" Margin="0,6,0,0">
@@ -371,7 +378,9 @@
                 <TextBlock Text="You type it again on the new PC." Style="{StaticResource Eyebrow}" Margin="0,6,0,0"/>
               </StackPanel>
             </StackPanel>
+            </ScrollViewer>
           </Border>
+          <StackPanel Grid.Row="2">
           <Grid Margin="0,10,0,0">
             <TextBlock Text="TOTAL" Style="{StaticResource Eyebrow}" VerticalAlignment="Center"/>
             <Button x:Name="BtnSavePlan" Style="{StaticResource Ghost}" Content="Save this list as text" HorizontalAlignment="Right"/>
@@ -390,7 +399,8 @@
               <Button x:Name="BtnExport" Style="{StaticResource Primary}" Content="Prepare the move" FontSize="18" Margin="0,8,0,0" IsEnabled="False"/>
             </StackPanel>
           </Border>
-        </StackPanel>
+          </StackPanel>
+        </Grid>
       </Grid>
 
       <!-- ============ Old PC: prepare and share ============ -->

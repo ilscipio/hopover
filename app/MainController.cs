@@ -534,7 +534,8 @@ namespace Hopover.App
             string certPw = F<PasswordBox>("OldCertPw").Password;
             if (steps.Contains("certs") && certsOnOldPc && certPw.Length == 0)
             {
-                ShowDialog("Certificate password", "Type a password for the certificates, or switch the certificates off.", "OK", null, null);
+                // The field can sit below the fold of the switches: focus scrolls it into view.
+                ShowDialog("Certificate password", "Type a password for the certificates, or switch the certificates off.", "OK", null, () => F<PasswordBox>("OldCertPw").Focus());
                 return;
             }
             // The sizes only feed the progress bar: no reason to wait for the rest. Stop the measuring, then come back here.
@@ -1458,6 +1459,7 @@ namespace Hopover.App
                     F<TextBlock>("ScanText").Text = "Scan done. Untick whatever should stay behind.";
                     F<Button>("BtnExport").IsEnabled = true;
                     ShowScanCode("7-yankee-orange-vision", "Connected: NEWPC-2026. It waits for this PC.");
+                    F<UIElement>("OldCertPanel").Visibility = Visibility.Visible;
                     F<TextBlock>("CloudNote").Text = "OneDrive, SeaDrive and Google Drive stay out of the move: they sync after sign-in.";
                     ShowPage("PageScan", "Old PC");
                     break;
