@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -18,6 +19,7 @@ namespace Hopover.Link
         public int TcpPort = 47800, UdpPort = 47801;
         public string Rendezvous;          // host:port, null = no internet path
         public string FixedCode;           // tests only
+        public string Engine;              // the unpacked engine folder; "refresh" needs it
         public string Name = Environment.MachineName;
         /// <summary>Extra virtual roots for tests: name -> directory.</summary>
         public Dictionary<string, string> Roots = new Dictionary<string, string>();
@@ -318,11 +320,12 @@ namespace Hopover.Link
                         {
                             var fi = new FileInfo(Lp(Resolve(Str(req, "root"), Str(req, "path"))));
                             FileSystemInfo e = fi.Exists ? (FileSystemInfo)fi : new DirectoryInfo(fi.FullName);
-                            if (!e.Exists) throw new FileNotFoundException("not found");
+                            if (!e.Exists) throw new FileNotFoundException();
                             byte[] b = Encoding.UTF8.GetBytes(Entry.Format(ToEntry(e)) + "\n");
                             ch.Send(Msg.Data, Wrap(sid, b, 0, b.Length));
                             break;
                         }
+                    case "refresh": Refresh(ch, sid); break;
                     case "read": Read(ch, tag, sid, Resolve(Str(req, "root"), Str(req, "path")), Convert.ToInt64(req["off"]), Convert.ToInt64(req["len"])); break;
                     default: throw new InvalidOperationException("unknown op");
                 }
@@ -331,7 +334,12 @@ namespace Hopover.Link
             catch (LinkException) { }
             catch (Exception e)
             {
-                try { byte[] m = Encoding.UTF8.GetBytes(e.Message); ch.Send(Msg.Err, Wrap(sid, m, 0, m.Length)); } catch { }
+                // Fixed words, not the localised text: the new PC decides by them (LinkCopy.Busy).
+                string text = e is FileNotFoundException || e is DirectoryNotFoundException ? "not found"
+                            : e is UnauthorizedAccessException && !(e.Message == "bad path" || e.Message == "reparse point" || e.Message == "no such root" || e.Message == "no such drive") ? "locked"
+                            : e is IOException && ((e.HResult & 0xFFFF) == 32 || (e.HResult & 0xFFFF) == 33) ? "locked"
+                            : e.Message;
+                try { byte[] m = Encoding.UTF8.GetBytes(text); ch.Send(Msg.Err, Wrap(sid, m, 0, m.Length)); } catch { }
             }
             finally { bool x; cancelled.TryRemove(tag + sid, out x); }
         }
@@ -377,6 +385,7 @@ namespace Hopover.Link
             bool dir = (e.Attributes & FileAttributes.Directory) != 0;
             return new Entry
             {
+                Target = (e.Attributes & FileAttributes.ReparsePoint) != 0 ? Reparse.Read(e.FullName) : null,
                 Attrs = (int)e.Attributes,
                 Size = dir ? 0 : ((FileInfo)e).Length,
                 CTime = e.CreationTimeUtc.Ticks,
@@ -406,6 +415,46 @@ namespace Hopover.Link
             byte[] b = Encoding.UTF8.GetBytes(sb.ToString());
             sb.Length = 0;
             ch.Send(Msg.Data, Wrap(sid, b, 0, b.Length));
+        }
+
+        int refreshing;
+
+        /// <summary>
+        /// The peer knows the code and asks for the changes since the last export: runs the fixed command
+        /// "hopover.ps1 export -Refresh" and sends its output back. The peer chooses nothing, so the link stays read-only for it.
+        /// </summary>
+        void Refresh(Channel ch, uint sid)
+        {
+            if (string.IsNullOrEmpty(o.Engine)) throw new InvalidOperationException("this Hopover cannot prepare changes: start it again on the old PC");
+            if (Interlocked.Exchange(ref refreshing, 1) == 1) throw new InvalidOperationException("the old PC prepares its changes already");
+            try
+            {
+                string ps = Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe");
+                var psi = new ProcessStartInfo(ps)
+                {
+                    Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + Path.Combine(o.Engine, "hopover.ps1") + "\" export -Refresh -Store \"" + o.Store + "\"",
+                    UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
+                    StandardOutputEncoding = Encoding.UTF8, WorkingDirectory = o.Engine,
+                };
+                psi.EnvironmentVariables["HOPOVER_GUI"] = "1";
+                psi.EnvironmentVariables["HOPOVER_EXE"] = Process.GetCurrentProcess().MainModule.FileName;
+                Action<string> send = line =>
+                {
+                    byte[] b = Encoding.UTF8.GetBytes(line + "\n");
+                    try { ch.Send(Msg.Data, Wrap(sid, b, 0, b.Length)); } catch (Exception) { }
+                };
+                using (var p = Process.Start(psi))
+                {
+                    p.OutputDataReceived += (s, e) => { if (!string.IsNullOrEmpty(e.Data) && !e.Data.StartsWith("##")) send(e.Data); };
+                    p.ErrorDataReceived += delegate { };
+                    p.BeginOutputReadLine();
+                    p.BeginErrorReadLine();
+                    while (!p.WaitForExit(30000)) send(".");   // the mux call must not time out during a silent step
+                    Thread.Sleep(500);
+                    send("##REFRESHED " + p.ExitCode);
+                }
+            }
+            finally { Interlocked.Exchange(ref refreshing, 0); }
         }
 
         void Read(Channel ch, string tag, uint sid, string file, long off, long len)

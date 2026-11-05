@@ -169,7 +169,7 @@ try {
             $mbs = if ($c.Clock.Elapsed.TotalSeconds -gt 0) { $rb / 1MB / $c.Clock.Elapsed.TotalSeconds } else { 0 }
             Write-Host ("  copied {0:N2} GB in {1:N1} s = {2:N0} MB/s" -f ($rb / 1GB), $c.Clock.Elapsed.TotalSeconds, $mbs)
             Compare-Trees "$T\src" $dst "[$ip] run 1"
-            Ok "[$ip] junction not followed" (-not (Test-Path (Join-Path $dst 'special\junction'))) ''
+            Ok "[$ip] junction not followed, made as a junction" ((Get-Item -LiteralPath (Join-Path $dst 'special\junction') -Force).LinkType -eq 'Junction') ''
             Ok "[$ip] empty folder created" (Test-Path (Join-Path $dst 'special\empty')) ''
             Ok "[$ip] no part files left" (-not (Get-ChildItem $dst -Recurse -Force -Filter '*.hopover-part*' -ErrorAction SilentlyContinue)) ''
 

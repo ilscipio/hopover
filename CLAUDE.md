@@ -30,6 +30,25 @@ User steps: `README.md`.
   them claim WSL, SSH keys, env vars or dev scheduled tasks. A sale version needs a
   code-signing certificate and tests on many PC types.
 
+- 2026-11-05 laptop arrived (Windows 11 Home, Ryzen, RTX 5080; Home has no Hyper-V). Review with real data from
+  this PC: all of AppData now moves (allow list -> exclude list), programs without a package as folders
+  (`apps\programs.json`, uninstall key, HKLM vendor key, programData), Chocolatey, Store apps by exact name, VS
+  workloads, caches as list lines (`caches`), HKCU Classes, HKLM vendor keys (only when absent on the new PC), hosts,
+  Windows features, long paths/Developer Mode, generic Credential Manager entries (`Hopover.Cred`), WireGuard
+  (read as SYSTEM, imported by hand), PostgreSQL (`tar` with the server stopped), raw env values (`%VAR%` kept,
+  REG_EXPAND_SZ), junctions/symlinks as links (`Reparse.cs`), catch-up (see below). The real run is still open.
+
+## Catch-up (old PC stays in use)
+
+- New PC: `import -Catchup` -> `Hopover.exe --link refresh` -> server op `refresh` runs the fixed
+  `hopover.ps1 export -Refresh` on the old PC (needs `--engine` on `--link serve`; output returns through the call).
+- Refresh: quick rescan (no sizes), apps, env, system, settings, tasks, `Export-WslDelta` (files newer than
+  `ExportedAt`), Docker, PostgreSQL. No certs, no link start.
+- `baseline.json` (UTC ticks) = end of the last complete files pass. `LinkCopy /SYNC:ticks /HOLD:dir /SYNCLOG:dir`:
+  dst changed since then + src changed = conflict (dst stays, src to `C:\hopover-held\<time>\old-pc-version`);
+  local-only file with creation AND write time <= base = gone on the old PC (moves to `removed-on-old-pc`); everything
+  else on this PC stays. Only complete passes move the baseline. `env-base.json` makes env three-way.
+
 ## How it works
 
 - Old PC: `inventory` builds the plan and measures it in parallel (`robocopy /L` in the
@@ -48,7 +67,7 @@ User steps: `README.md`.
 - Copy: `lib\Native.cs` `RoboPool` = N copy processes (`RoboJob.Exe`: robocopy for the scan, `Hopover.exe --link copy` for the move) on worker threads, CPU class
   Idle/BelowNormal and low I/O priority (NtSetInformationProcess), output parsed line by
   line (no memory growth). `files-done.json` lists finished chunks; a restart skips them
-  (`-Recopy` ignores it). `/E /XO /XJ`, never `/MIR`.
+  (`-Recopy` ignores it). `/E /XO /XJ`, never `/MIR`. A source file that is locked, gone or keeps changing does not fail a chunk: `ERROR not copied` in the log, checklist line, a catch-up retries it.
 - Events (stdout lines starting with `##`): `STEP <phase> start|done|failed|skipped`,
   `SCAN done total path`, `ITEM idx count planned path`, `ITEMDONE idx planned exit`,
   `PROGRESS done total runBytes`, `SHARE pc|user|ips`, `END ...`.
@@ -68,10 +87,11 @@ User steps: `README.md`.
   `\\link\hopover-d\...` (virtual roots `store`, `drive-d`; the server rejects `..`, rooted names, reparse points).
   `LinkCopy.cs` prints robocopy's tab lines and exit codes; /XO rule, `name.hopover-part` + `.meta` sidecar every 32 MiB,
   always `\\?\` paths, times and R/H/S/A set, folder times last, nothing deleted.
-- Headless verbs (run before WPF in `Program.Main`): `--link selftest|serve|proxy|copy|info|stub`.
+- Headless verbs (run before WPF in `Program.Main`): `--link selftest|serve|proxy|copy|info|refresh|stub`.
   `stub` is a local stand-in for the meeting point (tests only).
 - Tests: `Hopover.exe --link selftest`; `tests\link-test.ps1` (a few GB through the real engine path, loopback and
-  LAN IP, kill and resume); `tests\punch-test.ps1` (hole punch code path on loopback only: real NAT traversal untested).
+  LAN IP, kill and resume); `tests\sync-test.ps1` (catch-up rules, links, locked files; loopback, safe to run);
+  `tests\punch-test.ps1` (hole punch code path on loopback only: real NAT traversal untested).
 - Events: `##LINK code|path|peer|state`.
 
 ## Files

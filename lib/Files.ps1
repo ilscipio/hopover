@@ -31,7 +31,15 @@ function Get-CopyPlan($Config) {
     Get-ChildItem -LiteralPath $profileDir -Force | Where-Object { -not (Test-NameExcluded $_.Name $Config.profileExclude) } |
         ForEach-Object { & $add $_.FullName 'profile' }
 
-    # 2. Selected AppData folders (copying all of AppData breaks apps).
+    # 2. AppData: every app folder (settings, tools, user-scope programs), except what the config leaves out:
+    #    Windows' own keys and DPAPI folders, temp data, browser profiles (they sync), Docker's disk.
+    #    A cache has its own line in the list, so that unticking it works.
+    $cachePaths = @($Config.caches | ForEach-Object { Expand-PathVars $_ } | Where-Object { $_ })
+    Get-ChildItem -LiteralPath $env:APPDATA -Force | Where-Object { -not (Test-NameExcluded $_.Name $Config.appDataRoamingExclude) -and $cachePaths -notcontains $_.FullName } |
+        ForEach-Object { & $add $_.FullName 'appdata-roaming' }
+    Get-ChildItem -LiteralPath $env:LOCALAPPDATA -Force | Where-Object { -not (Test-NameExcluded $_.Name $Config.appDataLocalExclude) -and $cachePaths -notcontains $_.FullName } |
+        ForEach-Object { & $add $_.FullName 'appdata-local' }
+    # Parts of the left-out folders that do move.
     foreach ($rel in $Config.appDataRoaming) { & $add (Join-Path $env:APPDATA $rel) 'appdata-roaming' }
     foreach ($rel in $Config.appDataLocal) { & $add (Join-Path $env:LOCALAPPDATA $rel) 'appdata-local' }
 
@@ -45,6 +53,14 @@ function Get-CopyPlan($Config) {
         Get-Volume | Where-Object { $_.DriveType -eq 'Fixed' -and $_.DriveLetter -and $_.DriveLetter -ne 'C' } |
             ForEach-Object { & $add "$($_.DriveLetter):\" 'drive' }
     }
+
+    # 4b. Software that no package manager can install: its folder and its data move as they are.
+    foreach ($p in @(Get-ProgramFolders $Config)) { & $add $p.Path 'program' }
+    foreach ($p in $Config.programData) { & $add (Join-Path $env:ProgramData $p) 'programdata' }
+    foreach ($p in $Config.extraPaths) { & $add (Expand-PathVars $p) 'extra' }
+
+    # 4c. Caches: only time is at stake. Each one is a line in the list, so the user can leave it out.
+    foreach ($p in $Config.caches) { & $add (Expand-PathVars $p) 'cache' }
 
     # 5. KeePass databases and key files that KeePass remembers, wherever they live.
     foreach ($f in Get-KeePassFiles) {
@@ -78,6 +94,67 @@ function Split-PlanItem($Item, [int]$Depth, [string[]]$ExNames, [string[]]$ExPat
     }
 }
 
+function Get-UnmatchedNames($Lines) {
+    # winget export: "Installed package is not available from any source: NAME VERSION" (German text too).
+    # Only the first colon splits: names have colons too ("FTL: Faster Than Light").
+    @($Lines | Where-Object { "$_" -match 'not available|nicht verf' } | ForEach-Object {
+        $i = "$_".IndexOf(':')
+        if ($i -gt 0) { "$_".Substring($i + 1).Trim() }
+    } | Where-Object { $_ } | Sort-Object -Unique)
+}
+
+function Get-UninstallEntries {
+    # SystemComponent stays in: a bundle often hides the entry that knows the folder (Snagit, Blue Sherpa).
+    $keys = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+            'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
+    Get-ItemProperty $keys -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -and -not $_.ParentKeyName }
+}
+
+function Get-ProgramFolders($Config) {
+    # The installed programs that winget cannot match, with their folder and uninstall key: apps\programs.json.
+    $file = Join-Path $Store 'apps\programs.json'
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { return @() }
+    $tmp = Join-Path $env:TEMP 'hopover-scan-winget.json'
+    $names = Get-UnmatchedNames (winget export -o $tmp --accept-source-agreements 2>&1)
+    Remove-Item $tmp -ErrorAction SilentlyContinue
+    $set = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($n in $names) { [void]$set.Add($n) }
+    $map = @($Config.appMap.PSObject.Properties | ForEach-Object { $_.Name })
+    $roots = @($env:ProgramFiles, ${env:ProgramFiles(x86)})
+    # MSI programs often name no folder at all (DaVinci Resolve, Affinity): a top folder with the name of the program or its publisher.
+    $tops = @(foreach ($r in $roots) { Get-ChildItem -LiteralPath $r -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name.Length -ge 4 -and $_.FullName -notmatch $Config.programPathSkip } })
+    $res = @{}
+    $covered = New-Object System.Collections.Generic.List[string]
+    foreach ($e in Get-UninstallEntries) {
+        if (-not ($set.Contains($e.DisplayName) -or $set.Contains("$($e.DisplayName) $($e.DisplayVersion)"))) { continue }
+        if ($e.DisplayName -match $Config.appSearchSkip) { continue }
+        if ($map | Where-Object { $e.DisplayName -match $_ }) { continue }
+        $dir = "$($e.InstallLocation)".Trim().Trim('"').Replace('/', '\').TrimEnd('\')
+        $exe = @($e.DisplayIcon, $e.UninstallString) | ForEach-Object { if ("$_" -match '^"?([A-Za-z]:[\\/][^",]+)') { $Matches[1].Replace('/', '\') } } | Where-Object { $_ -notlike '*\Package Cache\*' } | Select-Object -First 1
+        # In the profile or AppData: it moves with those. A hidden installer folder like that says nothing about the program, so only the location counts first.
+        if (($dir -and (Test-UnderAny $dir @($env:USERPROFILE))) -or (-not $dir -and $exe -and (Test-UnderAny $exe @($env:USERPROFILE)))) { $covered.Add($e.DisplayName); continue }
+        if (-not $dir -and $exe) {
+            # No InstallLocation: the top folder of the icon or the uninstaller.
+            foreach ($r in $roots) { if (Test-UnderAny $exe @($r)) { $dir = Join-Path $r (($exe.Substring($r.Length + 1) -split '\\')[0]) } }
+        }
+        if (-not $dir) {
+            $t = @($tops | Where-Object { $e.DisplayName -like "$($_.Name)*" -or "$($e.Publisher)" -like "$($_.Name)*" }) | Select-Object -First 1
+            if ($t) { $dir = $t.FullName }
+        }
+        if (-not $dir -or -not (Test-UnderAny $dir $roots) -or ($roots -contains $dir)) { continue }
+        if ($dir -match $Config.programPathSkip -or -not (Test-Path -LiteralPath $dir -PathType Container)) { continue }
+        $res[$dir] = [pscustomobject]@{ Name = $e.DisplayName; Path = $dir; Key = ($e.PSPath -replace '^.*::', '') }
+    }
+    # A publisher folder and a program inside it: the outer one covers both.
+    $paths = @($res.Keys)
+    $list = @($res.Values | Where-Object { $d = $_.Path; -not ($paths | Where-Object { $_ -ne $d -and (Test-UnderAny $d @($_)) }) } | Sort-Object Path)
+    Write-Json $list $file
+    Write-Json @($covered) (Join-Path $Store 'apps\covered.json')
+    Write-Json @($names) (Join-Path $Store 'apps\unmatched.json')
+    $list
+}
+
 function Get-KeePassFiles {
     $cfg = Join-Path $env:APPDATA 'KeePass\KeePass.config.xml'
     if (-not (Test-Path $cfg)) { return @() }
@@ -108,6 +185,8 @@ function Get-Junctions {
 function Get-RobocopyExcludes($Config) {
     $xd = @($Config.excludeDirs | ForEach-Object { if ($_ -match '%') { Expand-PathVars $_ } else { $_ } } | Where-Object { $_ })
     $xd += @($Config.skipUnder | ForEach-Object { Expand-PathVars $_ } | Where-Object { $_ })
+    # Caches are chunks of their own: every other chunk leaves them out, whether or not the user wants them.
+    $xd += @($Config.caches | ForEach-Object { Expand-PathVars $_ } | Where-Object { $_ })
     $list = @()
     if ($xd) { $list += "/XD"; $list += $xd }
     if ($Config.excludeFiles) { $list += "/XF"; $list += @($Config.excludeFiles) }
@@ -124,6 +203,8 @@ function ConvertTo-RoboArg([string]$Arg) {
 }
 
 function New-RoboJob([int]$Index, $Item, [string]$Src, [string]$Dst, [string[]]$Options, [string[]]$Excludes, [scriptblock]$MapPath, [string]$Exe, [string[]]$ExeArgs) {
+    # Browser engine caches in app folders. Only there: in a repo, a folder called Cache is source code.
+    if ($Item.Why -like 'appdata-*' -and $Config.appDataExcludeNames) { $Excludes = @($Excludes) + '/XD' + @($Config.appDataExcludeNames) }
     if ($Item.Kind -eq 'file') {
         $list = @((Split-Path $Src), (Split-Path $Dst), (Split-Path $Src -Leaf)) + $Options
     } elseif ($Item.Kind -eq 'files') {
@@ -213,7 +294,7 @@ function ConvertTo-SourcePath([string]$OldPath, [string]$From) {
 }
 
 function Copy-Plan($Plan, [string]$From, [string]$OldProfile, [string[]]$Excludes, [string]$Store, [string]$Speed,
-                   [scriptblock]$Heartbeat, [switch]$Recopy, [switch]$WhatIf) {
+                   [scriptblock]$Heartbeat, [switch]$Recopy, [switch]$WhatIf, [int64]$SyncBase = 0, [string]$Hold, [string]$SyncLog) {
     # The excludes were expanded on the old PC; full paths in them must point at its share.
     $ex = @($Excludes | ForEach-Object { if ($_ -match '^[A-Za-z]:\\') { ConvertTo-SourcePath $_ $From } else { $_ } })
     $log = Join-Path $Store 'logs\robocopy-errors.log'
@@ -226,6 +307,9 @@ function Copy-Plan($Plan, [string]$From, [string]$OldProfile, [string[]]$Exclude
     # (no /NFL): their byte counts drive the progress bar.
     $opts = @('/COPY:DAT', '/DCOPY:DAT', "/MT:$($sp.Mt)", '/R:1', '/W:1', '/XJ', '/XO', '/NP', '/NDL', '/NJH', '/NJS', '/BYTES')
     if ($WhatIf) { $opts += '/L' }
+    elseif ($SyncBase -gt 0) { $opts += "/SYNC:$SyncBase", "/HOLD:$Hold", "/SYNCLOG:$SyncLog" }
+    # Junctions and links that point into the old profile.
+    if ($OldProfile -ine $env:USERPROFILE) { $opts += "/LINKMAP:$($OldProfile.TrimEnd('\'))|$($env:USERPROFILE.TrimEnd('\'))" }
 
     $total = [int64](($Plan | Measure-Object Bytes -Sum).Sum)
     # Resume key = kind and path: a folder that was a "files" chunk in an earlier run and is a
@@ -244,7 +328,7 @@ function Copy-Plan($Plan, [string]$From, [string]$OldProfile, [string[]]$Exclude
     Write-Note "$($todo.Count) chunks, $($sp.Workers) at once, $($sp.Mt) threads each ($Speed)"
     $pool.Start()
 
-    $state = @{ DoneBytes = $skipped; DoneCopied = [int64]0; Failed = @(); LastSave = [DateTime]::Now }
+    $state = @{ DoneBytes = $skipped; DoneCopied = [int64]0; Failed = @(); LastSave = [DateTime]::Now; Fatal = 0; LinkLost = $false }
     Wait-Pool $pool {
         param($j)
         Send-Event ITEM "$($j.Index) $($todo.Count) $($j.Planned) $($j.Path)"
@@ -254,6 +338,16 @@ function Copy-Plan($Plan, [string]$From, [string]$OldProfile, [string[]]$Exclude
         $state.DoneCopied += $j.Copied
         Send-Event ITEMDONE "$($j.Index) $($j.Planned) $($j.ExitCode)"
         if ($j.ExitCode -ge 8) { Write-Warn "copy exit $($j.ExitCode) for $($j.Path) (see $log)"; $state.Failed += $j.Path }
+        # Exit 16 again and again: the link is gone. Stop here: each remaining chunk would only fail in a second, and a
+        # reconnect goes on from the done list.
+        if ($j.ExitCode -ge 16) {
+            $state.Fatal++
+            if ($state.Fatal -ge 3 -and -not $state.LinkLost) {
+                & $exe --link info 2>&1 | Out-Null
+                if ($LASTEXITCODE -ne 0) { $state.LinkLost = $true; $pool.Cancel(); Write-Warn 'The link to the old PC is gone: the copy stops here.' }
+                else { $state.Fatal = 0 }
+            }
+        } elseif ($j.ExitCode -ge 0) { $state.Fatal = 0 }
         elseif (-not $WhatIf) { [void]$done.Add("$($todo[$j.Index].Kind)|$($j.Path)") }
         if (([DateTime]::Now - $state.LastSave).TotalSeconds -ge 10) { Write-Json @($done) $doneFile; $state.LastSave = [DateTime]::Now }
     } {
@@ -268,7 +362,15 @@ function Copy-Plan($Plan, [string]$From, [string]$OldProfile, [string[]]$Exclude
     }
     if (-not $WhatIf) {
         Write-Json @($done) $doneFile
-        Set-CopiedOwner @($Plan | ForEach-Object { ConvertTo-TargetPath $_.Group $OldProfile } | Sort-Object -Unique)
+        if ($state.LinkLost) { $state.Failed += 'the link to the old PC was lost: connect again and go on'; return $state.Failed }
+        # Program folders keep the owner that Windows gave them. A catch-up leaves the groups that are done alone: icacls walks millions of files.
+        $ownerFile = Join-Path $Store 'owner-done.json'
+        $ownerDone = @(Read-Json $ownerFile | Where-Object { $_ })
+        $roots = @($Plan | Where-Object { $_.Why -notin 'program', 'programdata' -and $_.Group -notmatch '^[A-Za-z]:\\(Program Files|ProgramData)' } |
+            ForEach-Object { ConvertTo-TargetPath $_.Group $OldProfile } | Sort-Object -Unique | Where-Object { $ownerDone -notcontains $_ })
+        Set-CopiedOwner $roots
+        # After a failed chunk the next run must walk these folders again: its files come later.
+        if (-not $state.Failed.Count) { Write-Json @($ownerDone + $roots | Sort-Object -Unique) $ownerFile }
         Repair-SshAcl
     }
     $state.Failed

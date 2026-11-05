@@ -25,20 +25,31 @@ namespace Hopover.App
 
         static readonly (string Key, string Label)[] ExportSteps =
         {
-            ("apps", "App list"), ("env", "Environment variables"), ("settings", "Windows and app settings"),
-            ("certs", "Certificates"), ("tasks", "Scheduled tasks"), ("wsl", "WSL distros"), ("docker", "Docker volumes"),
+            ("apps", "App list"), ("env", "Environment variables"), ("system", "Hosts, Windows features, saved logins, VPN"),
+            ("settings", "Windows and app settings"), ("certs", "Certificates"), ("tasks", "Scheduled tasks"), ("wsl", "WSL distros"),
+            ("docker", "Docker volumes"), ("databases", "PostgreSQL"),
         };
 
         static readonly (string Key, string Label)[] ImportSteps =
         {
-            ("env", "Environment variables and PATH"), ("apps", "Apps (winget, in the background)"), ("files", "Files and folders"),
+            ("env", "Environment variables and PATH"), ("system", "Hosts, Windows features, saved logins"),
+            ("apps", "Apps (winget, Chocolatey, Store)"), ("files", "Files and folders"),
             ("certs", "Certificates"), ("wsl", "WSL distros"), ("settings", "Windows and app settings"),
-            ("docker", "Docker volumes"), ("tasks", "Scheduled tasks (switched off)"),
+            ("docker", "Docker volumes"), ("databases", "PostgreSQL"), ("tasks", "Scheduled tasks (switched off)"),
+        };
+
+        static readonly (string Key, string Label)[] CatchupSteps =
+        {
+            ("refresh", "The old PC prepares its changes"), ("env", "Environment variables and PATH"),
+            ("system", "Hosts, Windows features, saved logins"), ("apps", "New apps"), ("files", "Changed files"),
+            ("wsl", "Changes in WSL"), ("settings", "Changed settings"), ("docker", "Docker volumes"),
+            ("databases", "PostgreSQL"), ("tasks", "New scheduled tasks (switched off)"),
         };
 
         static readonly Dictionary<string, string> SwitchLabels = new Dictionary<string, string>
         {
-            ["apps"] = "Apps (winget list)", ["env"] = "Environment variables", ["files"] = "Files and folders",
+            ["apps"] = "Apps (winget list, Chocolatey, Store)", ["env"] = "Environment variables", ["files"] = "Files and folders",
+            ["system"] = "Hosts, Windows features, saved logins, VPN", ["databases"] = "PostgreSQL",
             ["settings"] = "Windows and app settings, Wi-Fi", ["certs"] = "Personal certificates", ["tasks"] = "Scheduled tasks",
             ["wsl"] = "WSL distros", ["docker"] = "Docker named volumes",
         };
@@ -100,6 +111,9 @@ namespace Hopover.App
             Click("BtnConnect", () => _ = Connect());
             Click("BtnReconnect", () => { ShowPage("PageConnect", "New PC"); F<TextBox>("CodeBox").Focus(); });
             Click("BtnImport", StartImport);
+            Click("BtnCatchupNow", StartCatchup);
+            Click("BtnCatchup", StartCatchup);
+            Click("BtnDoneCatchup", StartCatchup);
             Click("BtnChecklist", ShowChecklist);
             Click("BtnCheckBack", () => ShowPage(returnPage, "New PC"));
             Click("BtnCheckOpen", () => OpenFile(Path.Combine(Store, "CHECKLIST.md")));
@@ -467,7 +481,7 @@ namespace Hopover.App
                 F<TextBlock>("LinkPeer").Text = "The link server stopped (exit " + code + "). The details show why.";
                 ToggleLogOpen("ExportLogBorder", "BtnExportLog");
             };
-            serve.StartExe(exePath, new[] { "--link", "serve", "--store", Store });
+            serve.StartExe(exePath, new[] { "--link", "serve", "--store", Store, "--engine", engineDir });
         }
 
         // A link server left over from a crashed Hopover holds the port, so a new one could not listen.
@@ -642,7 +656,9 @@ namespace Hopover.App
             sumApps = appCount; sumBytes = bytes; sumTasks = taskCount;
             var distros = Json.List(Json.Get(m, "Distros")).Select(x => x.ToString()).Where(x => !x.StartsWith("docker-desktop")).ToList();
             sumDistros = distros.Count;
-            SetConnectMsg("Connected to " + Json.Str(m, "Computer") + ".", false);
+            bool moved = File.Exists(Path.Combine(Store, "baseline.json"));
+            F<UIElement>("BtnCatchupNow").Visibility = moved ? Visibility.Visible : Visibility.Collapsed;
+            SetConnectMsg("Connected to " + Json.Str(m, "Computer") + "." + (moved ? " The move is done: 'Catch up' fetches what changed there since." : ""), false);
             F<TextBlock>("ConnectText").Foreground = (Brush)Window.FindResource("Ink");
             F<TextBlock>("SummaryTitle").Text = Json.Str(m, "Computer") + "  ·  " + Json.Str(m, "User");
             F<TextBlock>("SummaryText").Text = appCount + " apps  ·  " + Fmt.Size(bytes) + " in " + plan.Count + " chunks  ·  " +
@@ -685,9 +701,27 @@ namespace Hopover.App
             }
             var args = new List<string> { "import", "-From", from, "-Store", Store, "-Only", string.Join(",", steps), "-Speed", Speed };
             if (F<CheckBox>("DrySwitch").IsChecked == true) args.Add("-WhatIf");
+            RunImport(args, ImportSteps, steps, certPw, "Moving to this PC", "LOADING THE TRUCK");
+        }
 
+        /// <summary>The old PC stayed in use: fetch what changed there. This PC's own changes stay; both sides of a clash are kept.</summary>
+        void StartCatchup()
+        {
+            if (engine.Running) return;
+            if (proxy == null || linkLost)
+            {
+                ShowPage("PageConnect", "New PC");
+                SetConnectMsg("Connect to the old PC first: type the code it shows now. Then click 'Catch up'.", false);
+                F<TextBox>("CodeBox").Focus();
+                return;
+            }
+            RunImport(new List<string> { "import", "-Catchup", "-From", from, "-Store", Store, "-Speed", Speed }, CatchupSteps, null, "", "Catching up with the old PC", "PICKING UP THE LAST BOXES");
+        }
+
+        void RunImport(List<string> args, (string Key, string Label)[] rows, ICollection<string> steps, string certPw, string title, string route)
+        {
             ShowPage("PageImport", "New PC");
-            FillSteps(importRows, ImportSteps, steps);
+            FillSteps(importRows, rows, steps);
             active.Clear();
             rateSamples.Clear();
             chunksDone = 0; chunksTotal = 0;
@@ -697,10 +731,10 @@ namespace Hopover.App
             F<UIElement>("BtnReconnect").Visibility = Visibility.Collapsed;
             F<UIElement>("HeroHazard").Visibility = Visibility.Visible;
             F<UIElement>("HeroWait").Visibility = Visibility.Visible;
-            SetRoute(0, "LOADING THE TRUCK");
+            SetRoute(0, route);
             F<UIElement>("HeroCard").Visibility = Visibility.Visible;
             F<UIElement>("DoneCard").Visibility = Visibility.Collapsed;
-            F<TextBlock>("ImportTitle").Text = "Moving to this PC";
+            F<TextBlock>("ImportTitle").Text = title;
             engine.OnEvent = OnImportEvent;
             engine.OnExit = OnImportExit;
             engine.Start(engineDir, args, new Dictionary<string, string>

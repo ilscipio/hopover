@@ -8,6 +8,7 @@ function Export-Apps([string]$Store, $Config) {
     # winget prints the packages it cannot map; keep them for the checklist.
     $msg = winget export -o $json --accept-source-agreements 2>&1
     $msg | Where-Object { "$_" -match 'not available|nicht verf' } | Set-Content (Join-Path $Store 'apps\winget-unmatched.txt') -Encoding UTF8
+    Write-Json @(Get-UnmatchedNames $msg) (Join-Path $Store 'apps\unmatched.json')
     $keys = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
             'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
             'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
@@ -28,6 +29,83 @@ function Export-Apps([string]$Store, $Config) {
     $user = @($ids | Where-Object { $_ -match '^Python\.Python\.3\.(\d+)$' -and (Test-Path "$env:LOCALAPPDATA\Programs\Python\Python3$($Matches[1])") })
     Write-Json @($user) (Join-Path $Store 'apps\user-scope.json')
     Write-Note "winget packages: $($ids.Count), extra from appMap: $($extra.Count) ($($extra -join ', ')), user scope: $($user -join ', ')"
+    # Chocolatey keeps its own list; on this kind of PC half of the command-line tools live there.
+    if (Get-Command choco -ErrorAction SilentlyContinue) {
+        $pk = @(choco list --limit-output 2>$null | ForEach-Object {
+            $p = "$_" -split '\|'
+            if ($p.Count -eq 2 -and $p[0] -notmatch $Config.chocoSkip) { [pscustomobject]@{ Id = $p[0]; Version = $p[1] } }
+        })
+        Write-Json @($pk) (Join-Path $Store 'apps\choco.json')
+        Write-Note "chocolatey packages: $($pk.Count)"
+    }
+    # Visual Studio: winget installs the shell only. The workloads come from an exported .vsconfig.
+    $vs = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+    if (Test-Path "$vs\vswhere.exe") {
+        $n = 0
+        $meta = @(& "$vs\vswhere.exe" -all -products * -format json | Out-String | ConvertFrom-Json | ForEach-Object { $_ } | ForEach-Object {
+            $n++
+            $cfg = Join-Path $Store "apps\vs-$n.vsconfig"
+            Start-Process "$vs\setup.exe" -ArgumentList @('export', '--installPath', "`"$($_.installationPath)`"", '--config', "`"$cfg`"", '--quiet', '--noUpdateInstaller') -Wait -WindowStyle Hidden
+            if (Test-Path $cfg) { [pscustomobject]@{ Path = $_.installationPath; Config = "vs-$n.vsconfig" } }
+        })
+        Write-Json @($meta) (Join-Path $Store 'apps\vs.json')
+        Write-Note "Visual Studio workload lists: $($meta.Count)"
+    }
+}
+
+function Import-Choco([string]$Store, [string[]]$Flags) {
+    $pk = @(Read-Json (Join-Path $Store 'apps\choco.json') | Where-Object { $_ })
+    if (-not $pk) { return @() }
+    $choco = Join-Path $env:ProgramData 'chocolatey\bin\choco.exe'
+    if (-not (Test-Path $choco)) {
+        Write-Note 'install Chocolatey'
+        if (-not (Install-WingetId 'Chocolatey.Chocolatey' $Flags) -or -not (Test-Path $choco)) { return @($pk | ForEach-Object { "choco $($_.Id)" }) }
+    }
+    $have = @(& $choco list --limit-output 2>$null | ForEach-Object { ("$_" -split '\|')[0] })
+    $failed = @()
+    foreach ($p in $pk) {
+        if ($have -contains $p.Id) { continue }
+        Write-Note "choco install $($p.Id) $($p.Version)"
+        & $choco install $p.Id --version $p.Version --yes --no-progress --limit-output 2>&1 | Out-Null
+        # An old version can be gone from the feed: then the current one.
+        if ($LASTEXITCODE -notin 0, 1641, 3010) { & $choco install $p.Id --yes --no-progress --limit-output 2>&1 | Out-Null }
+        if ($LASTEXITCODE -in 0, 1641, 3010) { Send-Event APP "choco.$($p.Id)|$($p.Id)" }
+        else { Write-Warn "choco install $($p.Id) failed (exit $LASTEXITCODE)"; $failed += "choco $($p.Id)" }
+    }
+    $failed
+}
+
+function Import-AppsByName([string]$Store, $Config, [string[]]$Flags) {
+    # Store apps and installs without an id in the export: one exact name search each. Programs whose folder is copied stay out.
+    $copied = @(Read-Json (Join-Path $Store 'apps\programs.json') | Where-Object { $_ } | ForEach-Object { $_.Name }) +
+              @(Read-Json (Join-Path $Store 'apps\covered.json') | Where-Object { $_ })
+    $triedFile = Join-Path $Store 'apps\tried.json'
+    $tried = @(Read-Json $triedFile | Where-Object { $_ })
+    $map = @($Config.appMap.PSObject.Properties | ForEach-Object { $_.Name })
+    $missing = @()
+    foreach ($raw in @(Read-Json (Join-Path $Store 'apps\unmatched.json') | Where-Object { $_ })) {
+        $name = ($raw -replace '\s+v?\d[\w.+\-]*$', '').Trim()
+        if (-not $name -or $name -match $Config.appSearchSkip) { continue }
+        if ($copied | Where-Object { $raw.StartsWith($_, [StringComparison]::OrdinalIgnoreCase) }) { continue }
+        if ($map | Where-Object { $name -match $_ }) { continue }
+        if ($tried -contains $name) { $missing += $name; continue }
+        $tried += $name
+        winget install --name $name --exact @Flags 2>&1 | Out-Null
+        $code = $LASTEXITCODE
+        if ($code -eq 0 -or $code -eq -1978335189 -or $code -eq -1978335135) { Write-Note "installed by name: $name"; Send-Event APP "$name|$name"; $tried = @($tried | Where-Object { $_ -ne $name }) }
+        else { $missing += $name }
+    }
+    Write-Json @($tried) $triedFile
+    $missing | Sort-Object -Unique
+}
+
+function Import-VsConfig([string]$Store) {
+    $vs = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+    foreach ($m in @(Read-Json (Join-Path $Store 'apps\vs.json') | Where-Object { $_ })) {
+        if (-not (Test-Path $vs) -or -not (Test-Path -LiteralPath $m.Path)) { Write-Warn "Visual Studio $($m.Path) is not here: workloads not added"; continue }
+        Write-Note "Visual Studio workloads: $($m.Path)"
+        Start-Process $vs -ArgumentList @('modify', '--installPath', "`"$($m.Path)`"", '--config', "`"$Store\apps\$($m.Config)`"", '--quiet', '--norestart', '--noUpdateInstaller') -Wait -WindowStyle Hidden
+    }
 }
 
 function Install-WingetId([string]$Id, [string[]]$Flags) {
@@ -75,12 +153,11 @@ function Import-Apps([string]$Store, $Config, [switch]$WhatIf) {
         if (-not (Install-WingetId $id $flags)) { $failed += $id }
     }
     # winget import has no per-package scope: the user-scope packages are done above, so leave them out.
-    if ($userScope) {
-        $w = Read-Json $json
-        foreach ($s in $w.Sources) { $s.Packages = @($s.Packages | Where-Object { $userScope -notcontains $_.PackageIdentifier }) }
-        $json = Join-Path $Store 'apps\winget-import.json'
-        Write-Json $w $json
-    }
+    # appSkip: packages that make no sense on another PC or wait for a click.
+    $w = Read-Json $json
+    foreach ($s in $w.Sources) { $s.Packages = @($s.Packages | Where-Object { $userScope -notcontains $_.PackageIdentifier -and $Config.appSkip -notcontains $_.PackageIdentifier }) }
+    $json = Join-Path $Store 'apps\winget-import.json'
+    Write-Json $w $json
     # Line by line into the log: the progress bars of winget would fill the memory of a runspace.
     winget import -i $json --ignore-unavailable --ignore-versions @($flags[0..1]) 2>&1 | ForEach-Object {
         $l = "$_".Trim()
@@ -94,49 +171,183 @@ function Import-Apps([string]$Store, $Config, [switch]$WhatIf) {
             Send-Event APP "$curId|$curName"
             $curId = $null
         }
-        if ($l -and $l -notmatch '^[\s\-\\|/]+$|^\d+\s*%$|[▀-▟]') { Write-Note $l }
+        if ($l -and $l -notmatch '^[\s\-\\|/]+$|^\d+\s*%$|[\u2580-\u259F]') { Write-Note $l }
     }
     if ($LASTEXITCODE -ne 0) { Write-Warn "winget import: some packages did not install (exit $LASTEXITCODE). The log lists them." }
+    $failed += @(Import-Choco $Store $flags)
+    $notFound = @(Import-AppsByName $Store $Config $flags)
+    Import-VsConfig $Store
     if ($failed) { Write-Warn "Not installed: $($failed -join ', '). Install them by hand." }
     Write-Json @($failed) (Join-Path $Store 'apps\failed.json')
+    Write-Json @($notFound) (Join-Path $Store 'apps\not-found.json')
 }
 
 # ---------- environment variables ----------
 function Export-EnvVars([string]$Store) {
-    $user = [Environment]::GetEnvironmentVariables('User')
-    $machine = [Environment]::GetEnvironmentVariables('Machine')
+    $user = Get-RawEnv 'User'
+    $machine = Get-RawEnv 'Machine'
     Write-Json ([pscustomobject]@{ User = $user; Machine = $machine }) (Join-Path $Store 'env.json')
-    Write-Note "user vars: $($user.Count), machine vars: $($machine.Count)"
+    Write-Note "user vars: $(@($user.PSObject.Properties).Count), machine vars: $(@($machine.PSObject.Properties).Count)"
 }
 
 function Import-EnvVars([string]$Store, [string]$OldProfile, [switch]$WhatIf) {
     $vars = Read-Json (Join-Path $Store "env.json")
     if (-not $OldProfile) { throw 'old profile path unknown (manifest missing)' }
     $fix = { param($v) if ($v) { $v -replace [regex]::Escape($OldProfile), $env:USERPROFILE.Replace('$', '$$') } else { $v } }
+    $plain = { param($e) [Environment]::ExpandEnvironmentVariables($e).TrimEnd('\') }
+    # env-base.json = what the last import applied. Value here = that base: only the old PC changed it, so it updates.
+    $base = Read-Json (Join-Path $Store 'env-base.json')
     $conflicts = @()
     foreach ($scope in 'User', 'Machine') {
         foreach ($p in $vars.$scope.PSObject.Properties) {
             $name = $p.Name; $old = & $fix $p.Value
-            $cur = [Environment]::GetEnvironmentVariable($name, $scope)
+            $cur = Get-RawEnvValue $scope $name
             if ($name -ieq 'Path') {
-                # Merge: keep every entry the new PC has, append the missing ones.
-                $have = @($cur -split ';' | Where-Object { $_ })
-                $missing = @($old -split ';' | Where-Object { $_ -and ($have -notcontains $_) })
+                # Merge: keep every entry the new PC has, append the missing ones. %VAR% entries stay %VAR%.
+                $have = @("$cur" -split ';' | Where-Object { $_ })
+                $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+                foreach ($e in $have) { [void]$seen.Add((& $plain $e)) }
+                $missing = @($old -split ';' | Where-Object { $_ -and $seen.Add((& $plain $_)) })
                 if ($missing) {
                     Write-Note "$scope PATH +$($missing.Count) entries"
-                    if (-not $WhatIf) { [Environment]::SetEnvironmentVariable('Path', (($have + $missing) -join ';'), $scope) }
+                    if (-not $WhatIf) { Set-RawEnvValue $scope 'Path' (($have + $missing) -join ';') }
                 }
                 continue
             }
-            if ($scope -eq 'Machine' -and $name -match '^(OS|PROCESSOR_|NUMBER_OF_PROCESSORS|ComSpec|PATHEXT|windir|DriverData|PSModulePath|TMP|TEMP|USERNAME)') { continue }
+            if ($scope -eq 'Machine' -and $name -match '^(OS|PROCESSOR_.*|NUMBER_OF_PROCESSORS|ComSpec|PATHEXT|windir|DriverData|PSModulePath|TMP|TEMP|USERNAME)$') { continue }
             if ($null -eq $cur) {
                 Write-Note "$scope $name"
-                if (-not $WhatIf) { [Environment]::SetEnvironmentVariable($name, $old, $scope) }
-            } elseif ($cur -ne $old) { $conflicts += "$scope $name" }
+                if (-not $WhatIf) { Set-RawEnvValue $scope $name $old }
+            } elseif ($cur -ne $old) {
+                $was = if ($base) { & $fix $base.$scope.$name } else { $null }
+                if ($null -ne $was -and $cur -eq $was) {
+                    Write-Note "$scope $name changed on the old PC"
+                    if (-not $WhatIf) { Set-RawEnvValue $scope $name $old }
+                } else { $conflicts += "$scope $name" }
+            }
         }
+    }
+    if (-not $WhatIf) {
+        Send-EnvChanged
+        Copy-Item (Join-Path $Store 'env.json') (Join-Path $Store 'env-base.json') -Force
     }
     foreach ($c in $conflicts) { Write-Warn "kept the new value of $c (differs from the old PC)" }
     $conflicts
+}
+
+# ---------- system: hosts, Windows features, machine switches, saved logins, VPN ----------
+function Export-System([string]$Store, $Config) {
+    $dir = Join-Path $Store 'system'
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    Copy-Item "$env:SystemRoot\System32\drivers\etc\hosts" "$dir\hosts" -Force -ErrorAction SilentlyContinue
+    $on = @(Get-WindowsOptionalFeature -Online -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Enabled' -and $_.FeatureName -notmatch $Config.featureSkip } | ForEach-Object { $_.FeatureName })
+    $caps = @(Get-WindowsCapability -Online -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Installed' -and $_.Name -match '^(OpenSSH|Rsat)' } | ForEach-Object { $_.Name })
+    $values = [ordered]@{}
+    foreach ($p in $Config.registryMachineValues.PSObject.Properties) {
+        $key = Get-Item ('Registry::' + $p.Name) -ErrorAction SilentlyContinue
+        if (-not $key) { continue }
+        $one = [ordered]@{}
+        foreach ($n in $p.Value) {
+            $v = $key.GetValue($n, $null)
+            if ($null -ne $v) { $one[$n] = [pscustomobject]@{ Value = $v; Kind = "$($key.GetValueKind($n))" } }
+        }
+        $values[$p.Name] = [pscustomobject]$one
+    }
+    Write-Json ([pscustomobject]@{ Features = $on; Capabilities = $caps; Values = [pscustomobject]$values }) "$dir\system.json"
+    # Tokens of git, gh, docker and others. The store is locked to this user; the link is encrypted.
+    $creds = @([Hopover.Cred]::ReadAll() | Where-Object { $_.Target -notmatch $Config.credSkip })
+    Write-Json @($creds) "$dir\logins.json"
+    Write-Note "features: $($on.Count), saved logins: $($creds.Count)"
+    Export-WireGuard $dir
+}
+
+function Export-WireGuard([string]$Dir) {
+    # WireGuard encrypts its tunnels for SYSTEM on this PC only: read them as SYSTEM once, into the locked store.
+    $src = Join-Path $env:ProgramFiles 'WireGuard\Data\Configurations'
+    if (-not (Test-Path "$src\*.dpapi")) { return }
+    $to = Join-Path $Dir 'wireguard'
+    New-Item -ItemType Directory -Path $to -Force | Out-Null
+    $code = "Add-Type -AssemblyName System.Security; Get-ChildItem '$src\*.dpapi' | ForEach-Object { [IO.File]::WriteAllBytes('$to\' + `$_.BaseName, [Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes(`$_.FullName), `$null, 'CurrentUser')) }"
+    $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($code))
+    $name = 'Hopover-WireGuard-Export'
+    try {
+        $a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -NonInteractive -EncodedCommand $enc"
+        Register-ScheduledTask -TaskName $name -Action $a -User 'NT AUTHORITY\SYSTEM' -RunLevel Highest -Force -ErrorAction Stop | Out-Null
+        Start-ScheduledTask -TaskName $name -ErrorAction Stop
+        $until = (Get-Date).AddSeconds(30)
+        while ((Get-ScheduledTask -TaskName $name).State -eq 'Running' -and (Get-Date) -lt $until) { Start-Sleep -Milliseconds 500 }
+    } catch { Write-Warn "WireGuard tunnels not exported: $($_.Exception.Message)" }
+    Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue
+    Write-Note "WireGuard tunnels: $(@(Get-ChildItem "$to\*.conf" -ErrorAction SilentlyContinue).Count)"
+}
+
+function Import-System([string]$Store, [switch]$WhatIf) {
+    $dir = Join-Path $Store 'system'
+    $hosts = "$env:SystemRoot\System32\drivers\etc\hosts"
+    if (Test-Path "$dir\hosts") {
+        # Docker writes its own lines with this PC's address.
+        $norm = { param($l) ($l.Trim() -replace '\s+', ' ') }
+        $have = @(Get-Content $hosts -ErrorAction SilentlyContinue | ForEach-Object { & $norm $_ })
+        $add = @(Get-Content "$dir\hosts" | Where-Object { $_.Trim() -and $_.Trim() -notmatch '^#' -and $_ -notmatch 'docker\.internal' -and $have -notcontains (& $norm $_) })
+        if ($add) {
+            Write-Note "hosts +$($add.Count) lines"
+            if (-not $WhatIf) { try { Add-Content $hosts (@('', '# from the old PC (Hopover)') + $add) -Encoding ASCII -ErrorAction Stop } catch { Write-Warn "hosts file: $($_.Exception.Message)" } }
+        }
+    }
+    $s = Read-Json "$dir\system.json"
+    if ($s) {
+        foreach ($k in $s.Values.PSObject.Properties) {
+            foreach ($v in $k.Value.PSObject.Properties) {
+                Write-Note "$($k.Name)\$($v.Name) = $($v.Value.Value)"
+                if ($WhatIf) { continue }
+                $path = 'Registry::' + $k.Name
+                if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+                New-ItemProperty -Path $path -Name $v.Name -Value $v.Value.Value -PropertyType $v.Value.Kind -Force -ErrorAction SilentlyContinue | Out-Null
+            }
+        }
+        # Windows Home has no Hyper-V: a feature this edition lacks goes to the checklist; WSL and Docker work without it.
+        $all = @{}
+        Get-WindowsOptionalFeature -Online -ErrorAction SilentlyContinue | ForEach-Object { $all[$_.FeatureName] = "$($_.State)" }
+        $absent = @(); $restart = $false
+        foreach ($f in @($s.Features)) {
+            if (-not $f) { continue }
+            if (-not $all.ContainsKey($f)) { $absent += $f; continue }
+            if ($all[$f] -eq 'Enabled') { continue }
+            Write-Note "Windows feature $f"
+            if ($WhatIf) { continue }
+            try {
+                $r = Enable-WindowsOptionalFeature -Online -FeatureName $f -All -NoRestart -WarningAction SilentlyContinue -ErrorAction Stop
+                if ($r.RestartNeeded) { $restart = $true }
+            } catch { Write-Warn "Windows feature ${f}: $($_.Exception.Message)"; $absent += $f }
+        }
+        foreach ($c in @($s.Capabilities)) {
+            if (-not $c) { continue }
+            $now = Get-WindowsCapability -Online -Name $c -ErrorAction SilentlyContinue
+            if ($now -and $now.State -ne 'Installed' -and -not $WhatIf) {
+                Write-Note "Windows capability $c"
+                Add-WindowsCapability -Online -Name $c -ErrorAction SilentlyContinue | Out-Null
+            }
+        }
+        Write-Json @($absent) "$dir\features-absent.json"
+        if ($restart) { Write-Warn 'Windows features need a restart. Restart the PC when the move is done; WSL may need it first.' }
+    }
+    $have = @([Hopover.Cred]::ReadAll() | ForEach-Object { $_.Target })
+    $n = 0
+    foreach ($c in @(Read-Json "$dir\logins.json" | Where-Object { $_ })) {
+        if ($have -contains $c.Target) { continue }
+        $n++
+        if ($WhatIf) { continue }
+        if (-not [Hopover.Cred]::Write($c.Target, $c.User, $c.Comment, [int]$c.Persist, $c.Blob)) { Write-Warn "saved login $($c.Target) not written" }
+    }
+    Write-Note "saved logins: $n new"
+}
+
+function Import-UserUninstall([string]$Store, [string]$OldProfile, $Plan) {
+    # The apps in %LOCALAPPDATA%\Programs arrive as files. Their uninstall keys tell winget that they are there:
+    # otherwise it installs them a second time, into the folder that is being copied.
+    $f = Join-Path $Store 'settings\user-uninstall.reg'
+    if (-not (Test-Path $f) -or -not ($Plan | Where-Object { $_.Group -like '*\AppData\Local\Programs' })) { return }
+    if (-not (Import-RegFile $f $OldProfile)) { Write-Warn 'user uninstall keys not imported: winget may install some apps twice' }
 }
 
 # ---------- registry settings, Wi-Fi, drives, printers ----------
@@ -175,6 +386,31 @@ function Export-Settings([string]$Store, $Config) {
     if ($win.Power -match '^[0-9a-f-]{36}$') { powercfg /export "$dir\power.pow" $win.Power | Out-Null }
     Write-Json $win "$dir\windows.json"
     Write-Note "app registry keys: $($vendors.Count) ($(($vendors.PSChildName) -join ', '))"
+    reg export 'HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall' "$dir\user-uninstall.reg" /y 2>$null | Out-Null
+    # Machine-wide vendor keys. The import takes a key only when no installer made one here.
+    New-Item -ItemType Directory -Path "$dir\hklm", "$dir\uninstall" -Force | Out-Null
+    $skip = @($Config.registryVendorsExclude) + @($Config.registryMachineExclude)
+    $list = @(); $m = 0
+    foreach ($root in 'SOFTWARE', 'SOFTWARE\WOW6432Node') {
+        foreach ($v in Get-ChildItem "HKLM:\$root" -ErrorAction SilentlyContinue | Where-Object { -not (Test-NameExcluded $_.PSChildName $skip) }) {
+            $m++
+            $file = ('m{0:D3}-' -f $m) + ($v.PSChildName -replace '[^\w.\-]', '_') + '.reg'
+            $key = "HKLM\$root\$($v.PSChildName)"
+            reg export $key "$dir\hklm\$file" /y 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) { $list += [pscustomobject]@{ Key = $key; File = $file } }
+        }
+    }
+    Write-Json @($list) "$dir\hklm.json"
+    # Programs that move as a folder keep their entry in Settings > Apps.
+    $u = 0
+    $keys = @(foreach ($p in @(Read-Json (Join-Path $Store 'apps\programs.json') | Where-Object { $_ })) {
+        $u++
+        $file = "u$u.reg"
+        reg export $p.Key "$dir\uninstall\$file" /y 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { [pscustomobject]@{ Path = $p.Path; File = $file } }
+    })
+    Write-Json @($keys) "$dir\uninstall.json"
+    Write-Note "machine registry keys: $($list.Count), uninstall entries: $($keys.Count)"
     netsh wlan export profile key=clear folder="$dir\wifi" 2>$null | Out-Null
     $drives = Get-ChildItem HKCU:\Network -ErrorAction SilentlyContinue | ForEach-Object {
         [pscustomobject]@{ Letter = $_.PSChildName; Remote = (Get-ItemProperty $_.PSPath).RemotePath }
@@ -187,27 +423,55 @@ function Export-Settings([string]$Store, $Config) {
     Write-Note "registry keys: $i, wifi: $((Get-ChildItem "$dir\wifi").Count), mapped drives: $(@($drives).Count), printers: $(@($printers).Count)"
 }
 
-function Import-Settings([string]$Store, [string]$OldProfile, [switch]$WhatIf) {
+function Import-RegFile([string]$Path, [string]$OldProfile, [string]$Drop) {
+    # .reg files are UTF-16 and write paths as C:\\Users\\name: point them at this profile.
+    $text = Get-Content $Path -Raw -Encoding Unicode
+    foreach ($pair in @(@($OldProfile, $env:USERPROFILE), @($OldProfile.Replace('\', '\\'), $env:USERPROFILE.Replace('\', '\\')))) {
+        $text = $text -replace [regex]::Escape($pair[0]), $pair[1].Replace('$', '$$')
+    }
+    if ($Drop) { $text = (@([regex]::Split($text, '(?m)(?=^\[)') | Where-Object { $_ -notmatch $Drop })) -join '' }
+    $tmp = Join-Path $env:TEMP "hopover-$(Split-Path $Path -Leaf)"
+    [IO.File]::WriteAllText($tmp, $text, [Text.Encoding]::Unicode)
+    reg import $tmp 2>$null | Out-Null
+    $ok = $LASTEXITCODE -eq 0
+    Remove-Item $tmp -ErrorAction SilentlyContinue
+    $ok
+}
+
+function Import-Settings([string]$Store, [string]$OldProfile, $Config, [switch]$ChangedOnly, [switch]$WhatIf) {
     $dir = Join-Path $Store 'settings'
+    # A catch-up takes only what changed on the old PC: this PC's own settings stay otherwise.
+    $hashFile = Join-Path $dir 'applied.json'
+    $applied = @{}
+    $seen = Read-Json $hashFile
+    if ($seen) { foreach ($p in $seen.PSObject.Properties) { $applied[$p.Name] = $p.Value } }
+    $failedReg = @()
     foreach ($f in Get-ChildItem "$dir\reg\*.reg" -ErrorAction SilentlyContinue) {
+        $hash = (Get-FileHash -LiteralPath $f.FullName -Algorithm MD5).Hash
+        if ($ChangedOnly -and $applied[$f.Name] -eq $hash) { continue }
         Write-Note "reg import $($f.Name)"
         if ($WhatIf) { continue }
-        # .reg files are UTF-16 and write paths as C:\\Users\\name: point them at this profile.
-        $text = Get-Content $f.FullName -Raw -Encoding Unicode
-        foreach ($pair in @(@($OldProfile, $env:USERPROFILE), @($OldProfile.Replace('\', '\\'), $env:USERPROFILE.Replace('\', '\\')))) {
-            $text = $text -replace [regex]::Escape($pair[0]), $pair[1].Replace('$', '$$')
-        }
-        $tmp = Join-Path $env:TEMP "hopover-$($f.Name)"
-        Set-Content $tmp $text -Encoding Unicode
-        reg import $tmp 2>$null | Out-Null
-        Remove-Item $tmp -ErrorAction SilentlyContinue
+        if (Import-RegFile $f.FullName $OldProfile $Config.registryDropSections) { $applied[$f.Name] = $hash } else { $failedReg += $f.Name }
+    }
+    # Machine keys: only when no installer made the key here.
+    foreach ($k in @(Read-Json "$dir\hklm.json" | Where-Object { $_ })) {
+        if (Test-Path ('Registry::' + $k.Key)) { continue }
+        Write-Note "reg import $($k.Key)"
+        if (-not $WhatIf -and -not (Import-RegFile "$dir\hklm\$($k.File)" $OldProfile)) { $failedReg += $k.Key }
+    }
+    foreach ($k in @(Read-Json "$dir\uninstall.json" | Where-Object { $_ })) {
+        if (-not $WhatIf -and (Test-Path -LiteralPath $k.Path)) { [void](Import-RegFile "$dir\uninstall\$($k.File)" $OldProfile) }
+    }
+    if (-not $WhatIf) {
+        Write-Json ([pscustomobject]$applied) $hashFile
+        Write-Json @($failedReg) "$dir\failed.json"
     }
     foreach ($f in Get-ChildItem "$dir\wifi\*.xml" -ErrorAction SilentlyContinue) {
         Write-Note "wifi $($f.BaseName)"
         if (-not $WhatIf) { netsh wlan add profile filename="$($f.FullName)" user=all 2>$null | Out-Null }
     }
     $s = Read-Json "$dir\settings.json"
-    foreach ($d in $s.Drives) {
+    foreach ($d in $s.Drives | Where-Object { $_ }) {
         if (Test-Path "$($d.Letter):\") { continue }
         Write-Note "map $($d.Letter): $($d.Remote)"
         if (-not $WhatIf) { net use "$($d.Letter):" $d.Remote /persistent:yes 2>$null | Out-Null }
@@ -285,17 +549,42 @@ function Export-Wsl([string]$Store, $Config) {
     $dir = Join-Path $Store 'wsl'
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
     $meta = @()
+    # A later catch-up takes what changed after this moment. Clock of the old PC, in UTC.
+    $at = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
     foreach ($d in Get-WslDistros | Where-Object { $Config.wslSkip -notcontains $_ }) {
         $user = (Invoke-Wsl @('-d', $d, '-e', 'whoami') | Select-Object -First 1)
+        # The tar is about as large as the used space of the distro. A full disk here would hurt the PC that is still in use.
+        $used = [int64](@(Invoke-WslRoot $d "df -B1 --output=used / | tail -1") | Select-Object -Last 1)
+        $free = (Get-Item $dir).PSDrive.Free
+        if ($used -gt $free - 10GB) {
+            throw ("{0} needs about {1:N0} GB in the store and only {2:N0} GB are free on {3}. Free some space, or switch WSL off here and run it again later." -f $d, ($used / 1GB), ($free / 1GB), $dir.Substring(0, 2))
+        }
         Write-Note "wsl --export $d (user $user) - this stops the distro"
         $out = Invoke-Wsl @('--export', $d, "$dir\$d.tar")
         $tar = Get-Item "$dir\$d.tar" -ErrorAction SilentlyContinue
         if ($LASTEXITCODE -ne 0 -or -not $tar -or $tar.Length -eq 0) { throw "wsl --export $d failed: $($out -join ' ')" }
         Write-Note ("{0}.tar: {1:N1} GB" -f $d, ($tar.Length / 1GB))
-        $meta += [pscustomobject]@{ Name = $d; User = $user; Tar = "$d.tar" }
+        Remove-Item "$dir\$d-delta.tgz" -ErrorAction SilentlyContinue
+        $meta += [pscustomobject]@{ Name = $d; User = $user; Tar = "$d.tar"; ExportedAt = $at }
     }
     Copy-Item (Join-Path $env:USERPROFILE '.wslconfig') $dir -ErrorAction SilentlyContinue
     Write-Json $meta "$dir\distros.json"
+}
+
+function Export-WslDelta([string]$Store) {
+    # The whole distro again would take an hour and stop it: only the files changed since the export. No files that
+    # were deleted, and no /tmp, /run, logs and package downloads.
+    $dir = Join-Path $Store 'wsl'
+    foreach ($m in @(Read-Json "$dir\distros.json" | Where-Object { $_ })) {
+        if (@(Get-WslDistros) -notcontains $m.Name -or -not $m.ExportedAt) { continue }
+        $out = ConvertTo-WslPath "$dir\$($m.Name)-delta.tgz"
+        $sh = "cd / && find . -xdev \( -path ./tmp -o -path ./run -o -path ./var/tmp -o -path ./var/cache -o -path ./var/log \) -prune -o \( -type f -o -type l \) -newermt '$($m.ExportedAt)' -print0 | tar --null --no-recursion -T - -czf '$out'"
+        Write-Note "wsl changes in $($m.Name) since $($m.ExportedAt)"
+        Invoke-WslRoot $m.Name $sh | Select-Object -Last 2 | ForEach-Object { Write-Note "  $_" }
+        $f = Get-Item "$dir\$($m.Name)-delta.tgz" -ErrorAction SilentlyContinue
+        if (-not $f) { throw "wsl delta of $($m.Name) failed" }
+        Write-Note ("{0}-delta.tgz: {1:N1} MB" -f $m.Name, ($f.Length / 1MB))
+    }
 }
 
 function Import-Wsl([string]$Store, [switch]$WhatIf) {
@@ -321,12 +610,19 @@ function Import-Wsl([string]$Store, [switch]$WhatIf) {
         if ($m.User -and $m.User -ne 'root') {
             # An imported distro starts as root; wsl.conf restores the default user.
             $sh = "grep -q '^\[user\]' /etc/wsl.conf 2>/dev/null || printf '\n[user]\ndefault=$($m.User)\n' >> /etc/wsl.conf"
-            Invoke-Wsl @('-d', $m.Name, '-u', 'root', '--', 'sh', '-c', $sh) | Out-Null
+            Invoke-WslRoot $m.Name $sh | Out-Null
             Invoke-Wsl @('--terminate', $m.Name) | Out-Null
         }
     }
     $def = @($meta)[0].Name
     if (-not $WhatIf -and $def) { Invoke-Wsl @('--set-default', $def) | Out-Null }
+    foreach ($m in @($meta)) {
+        if ($WhatIf -or -not (Test-Path "$dir\$($m.Name)-delta.tgz")) { continue }
+        # --keep-newer-files: a file changed in this distro since then stays.
+        Write-Note "wsl changes into $($m.Name)"
+        $src = ConvertTo-WslPath "$dir\$($m.Name)-delta.tgz"
+        Invoke-WslRoot $m.Name "tar -C / --keep-newer-files -xzpf '$src' 2>/dev/null; true" | Out-Null
+    }
 }
 
 # ---------- Docker named volumes ----------
@@ -362,19 +658,85 @@ function Import-DockerVolumes([string]$Store, [switch]$WhatIf) {
     $dir = Join-Path $Store 'docker'
     $failed = @()
     $existing = @(if (-not $WhatIf) { docker volume ls -q 2>$null })
+    # What each volume looked like after the last restore. Same look now: nothing here used it, so the newer data can replace it.
+    $appliedFile = Join-Path $dir 'applied.json'
+    $applied = @{}
+    $seen = Read-Json $appliedFile
+    if ($seen) { foreach ($p in $seen.PSObject.Properties) { $applied[$p.Name] = $p.Value } }
+    $look = { param($v) (docker run --rm -v "${v}:/v:ro" alpine sh -c 'cd /v && find . -type f -exec stat -c "%n %s %Y" {} + | sort | sha256sum' 2>$null | Select-Object -First 1) }
+    $kept = @()
     foreach ($f in $files) {
         Write-Note "docker volume $($f.BaseName)"
         if ($WhatIf) { continue }
         # A volume that has data already (a compose stack started on this PC) is left alone.
         if ($existing -contains $f.BaseName) {
             $inside = docker run --rm -v "$($f.BaseName):/v" alpine sh -c 'ls -A /v | head -1' 2>$null
-            if ($inside) { Write-Note "  $($f.BaseName) has data on this PC: kept"; continue }
+            if ($inside) {
+                if ($applied[$f.BaseName] -and $applied[$f.BaseName] -eq (& $look $f.BaseName)) {
+                    # Unchanged since the restore, so the same data is still in the older archive of the old PC: nothing unique goes. Without
+                    # the clean-up, old and new database files would mix.
+                    Write-Note "  $($f.BaseName): unchanged here, newer data from the old PC"
+                    docker run --rm -v "$($f.BaseName):/v" alpine sh -c 'find /v -mindepth 1 -delete' | Out-Null
+                } else {
+                    Write-Note "  $($f.BaseName) changed on this PC: kept"
+                    $kept += $f.BaseName
+                    continue
+                }
+            }
         }
         docker volume create $f.BaseName | Out-Null
         docker run --rm -v "$($f.BaseName):/v" -v "${dir}:/b" alpine tar -C /v -xzf "/b/$($f.Name)" | Out-Null
-        if ($LASTEXITCODE -ne 0) { $failed += $f.BaseName }
+        if ($LASTEXITCODE -ne 0) { $failed += $f.BaseName } else { $applied[$f.BaseName] = & $look $f.BaseName }
     }
+    Write-Json ([pscustomobject]$applied) $appliedFile
+    Write-Json @($kept) (Join-Path $dir 'kept.json')
     if ($failed) { throw "docker volumes not restored: $($failed -join ', ')" }
+}
+
+# ---------- PostgreSQL ----------
+function Get-PgServices {
+    Get-CimInstance Win32_Service -Filter "Name LIKE 'postgresql%'" -ErrorAction SilentlyContinue | ForEach-Object {
+        if ($_.PathName -match '-D\s+"([^"]+)"') { [pscustomobject]@{ Name = $_.Name; Data = $Matches[1]; Running = ($_.State -eq 'Running') } }
+    }
+}
+
+function Export-Databases([string]$Store) {
+    # A database folder is consistent only with the server stopped. One archive: a later catch-up has no old files to mix in.
+    $dir = Join-Path $Store 'postgres'
+    foreach ($s in Get-PgServices) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        Write-Note "$($s.Name): stops for a moment, $($s.Data)"
+        Stop-Service $s.Name -Force -ErrorAction Stop
+        try {
+            tar.exe -czf "$dir\$($s.Name).tgz" -C "$($s.Data)" . 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "tar failed ($LASTEXITCODE)" }
+        } finally { if ($s.Running) { Start-Service $s.Name -ErrorAction SilentlyContinue } }
+    }
+}
+
+function Import-Databases([string]$Store, [switch]$WhatIf) {
+    $dir = Join-Path $Store 'postgres'
+    $failed = @()
+    foreach ($f in Get-ChildItem "$dir\*.tgz" -ErrorAction SilentlyContinue) {
+        $mark = "$dir\$($f.BaseName).applied"
+        # This server may hold new work by now. Its data stays; the checklist names the newer archive.
+        if (Test-Path $mark) { Write-Note "$($f.BaseName): restored earlier, this PC's data stays"; continue }
+        $s = @(Get-PgServices | Where-Object { $_.Name -eq $f.BaseName })[0]
+        if (-not $s) { $failed += $f.BaseName; continue }
+        Write-Note "$($s.Name): data from the old PC into $($s.Data)"
+        if ($WhatIf) { continue }
+        Stop-Service $s.Name -Force -ErrorAction Stop
+        $aside = "$($s.Data).hopover-fresh-$(Get-Date -Format yyyyMMdd-HHmmss)"
+        Rename-Item -LiteralPath $s.Data -NewName (Split-Path $aside -Leaf) -ErrorAction Stop
+        New-Item -ItemType Directory -Path $s.Data -Force | Out-Null
+        tar.exe -xzf $f.FullName -C "$($s.Data)" 2>&1 | Out-Null
+        # The service runs as NETWORK SERVICE (S-1-5-20).
+        icacls "$($s.Data)" /grant '*S-1-5-20:(OI)(CI)F' /T /C /Q | Out-Null
+        Start-Service $s.Name -ErrorAction SilentlyContinue
+        if ((Get-Service $s.Name).Status -eq 'Running') { Set-Content $mark (Get-Date).ToString('s') }
+        else { $failed += "$($s.Name) (it does not start: its old data is in $aside)" }
+    }
+    if ($failed) { throw "PostgreSQL not restored: $($failed -join '; '). Is PostgreSQL installed here?" }
 }
 
 # ---------- scheduled tasks ----------

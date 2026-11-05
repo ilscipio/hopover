@@ -37,13 +37,34 @@ function Write-Checklist([string]$Store, $Manifest, [hashtable]$Notes) {
     $L.Add('- [ ] Default apps (browser, PDF, mail): Windows protects them; set them in Settings > Apps > Default apps.')
     $L.Add('- [ ] Display scale and monitor layout: set them in Settings > System > Display (they belong to the hardware).')
     $L.Add('')
-    $L.Add('## Saved logins in Windows Credential Manager (secrets cannot be exported)')
-    if ($s.Credentials) { foreach ($c in $s.Credentials | Sort-Object -Unique) { $L.Add("- [ ] $c") } } else { $L.Add('- none') }
+    $L.Add('## Saved logins that Windows does not give out (domain passwords, Microsoft sign-ins)')
+    $moved = @(Read-Json "$Store\system\logins.json" | Where-Object { $_ } | ForEach-Object { $_.Target })
+    $rest = @($s.Credentials | Where-Object { $_ } | Sort-Object -Unique | Where-Object { $t = $_; -not ($moved | Where-Object { $t -like "*$_*" }) })
+    if ($rest) { foreach ($c in $rest) { $L.Add("- [ ] $c") } } else { $L.Add('- none') }
     $L.Add('')
-    $L.Add('## Apps that winget cannot install')
-    $um = Get-Content "$Store\apps\winget-unmatched.txt" -ErrorAction SilentlyContinue
-    if ($um) { foreach ($u in $um) { $L.Add("- [ ] $($u.Trim())") } } else { $L.Add('- none') }
+    $L.Add('## Programs that came as a folder, not through an installer')
+    $L.Add('Start each one once. A program with a licence, a driver or a service can ask to be installed again.')
+    $prog = @(Read-Json "$Store\apps\programs.json" | Where-Object { $_ })
+    foreach ($p in $prog) { $L.Add("- [ ] $($p.Name) (``$($p.Path)``)") }
+    if (-not $prog) { $L.Add('- none') }
+    $L.Add('')
+    $L.Add('## Apps that no package source has')
+    $nf = @(Read-Json "$Store\apps\not-found.json" | Where-Object { $_ })
+    foreach ($u in $nf) { $L.Add("- [ ] $u") }
+    foreach ($u in @(Read-Json "$Store\apps\failed.json" | Where-Object { $_ })) { $L.Add("- [ ] $u (install failed)") }
+    if (-not $nf) { $L.Add('- none') }
     $L.Add("- [ ] Compare with the full list of the old PC: ``$Store\apps\registry.json``")
+    $L.Add('')
+    $L.Add('## Windows and network')
+    foreach ($f in @(Read-Json "$Store\system\features-absent.json" | Where-Object { $_ })) { $L.Add("- [ ] Windows feature $f is not available on this edition (Windows Home has no Hyper-V; WSL and Docker work without it).") }
+    foreach ($w in @(Get-ChildItem "$Store\system\wireguard\*.conf" -ErrorAction SilentlyContinue)) {
+        $L.Add("- [ ] WireGuard: Import tunnel from file ``$($w.FullName)``. Stop the tunnel on the old PC first: one key, one PC at a time.")
+    }
+    foreach ($f in @(Read-Json "$Store\settings\failed.json" | Where-Object { $_ })) { $L.Add("- [ ] Registry import failed: $f") }
+    $L.Add('- [ ] Docker images come back with `docker-compose up` or a pull. Hopover moves named volumes, not the Docker disk (a running disk cannot be copied).')
+    $L.Add('- [ ] Steam games: Steam > Settings > Storage shows them if you kept the steamapps line in the list. Epic, GOG, EA and Ubisoft download again.')
+    foreach ($v in @(Read-Json "$Store\docker\kept.json" | Where-Object { $_ })) { $L.Add("- [ ] Docker volume $v changed on this PC and stays. The old PC's newer data: ``$Store\docker\$v.tgz``.") }
+    foreach ($p in @(Get-ChildItem "$Store\postgres\*.applied" -ErrorAction SilentlyContinue)) { $L.Add("- [ ] PostgreSQL $($p.BaseName): this PC's data stays. The old PC's latest data: ``$Store\postgres\$($p.BaseName).tgz``.") }
     $L.Add('')
     $L.Add('## Hardware and local devices')
     foreach ($p in $s.Printers | Where-Object { $_.Type -ne 'Connection' -and $_.PortName -notmatch '^(PORTPROMPT|nul|SHRFAX|XPS|OneNote|PDF)' -and $_.Name -notmatch 'PDF|XPS|OneNote|Fax' }) {
@@ -58,14 +79,21 @@ function Write-Checklist([string]$Store, $Manifest, [hashtable]$Notes) {
         foreach ($c in $Notes.TaskFailed) { $L.Add("- [ ] Task not imported: $c") }
         foreach ($c in $Notes.JunctionFailed) { $L.Add("- [ ] Junction not made; run as admin after SeaDrive sign-in: ``$c``") }
         foreach ($c in Get-Content "$Store\certs\not-exported.txt" -ErrorAction SilentlyContinue) { $L.Add("- [ ] Certificate: $c") }
+        $busy = @(Get-Content "$Store\logs\robocopy-errors.log" -ErrorAction SilentlyContinue | Where-Object { $_ -like 'ERROR not copied*' })
+        if ($busy) { $L.Add("- [ ] $($busy.Count) files were locked or kept changing on the old PC (list: ``logs\robocopy-errors.log``). Close the apps there and catch up.") }
+        if ($Notes.Hold -and ($Notes.Conflicts.Count -or $Notes.Removed.Count)) {
+            $L.Add("- [ ] Catch-up: $($Notes.Conflicts.Count) files changed on both PCs. This PC's version stays. The old PC's version is in ``$($Notes.Hold)\old-pc-version``.")
+            $L.Add("- [ ] Catch-up: $($Notes.Removed.Count) files are gone on the old PC. They moved to ``$($Notes.Hold)\removed-on-old-pc``. The list is ``$($Notes.Hold)\list.txt``.")
+        }
         $L.Add('')
     }
     $L.Add('## Last steps')
     $L.Add('- [ ] Open a new terminal (new PATH). Check `git`, `python`, `java -version`, `node`, `ssh -T git@github.com`.')
     $L.Add('- [ ] Sales dashboard: `cd C:\java\workspace\aivory-sales-manager; docker-compose up -d`, then `curl http://localhost:7777/api/sales`.')
-    $L.Add('- [ ] `hopover.ps1 enable-tasks` (the scheduled tasks are imported switched off).')
+    $L.Add('- [ ] Stop the scheduled tasks on the old PC first. Then `hopover.ps1 enable-tasks` here (they arrive switched off), or they run twice.')
+    $L.Add('- [ ] Last catch-up: stop working on the old PC, click **Catch up** here, then work only here.')
     $L.Add('- [ ] `hopover.ps1 verify` shows no gaps.')
-    $L.Add("- [ ] Old PC: ``hopover.ps1 cleanup``, then delete ``$Store`` on both PCs (it holds Wi-Fi passwords).")
+    $L.Add("- [ ] Old PC: ``hopover.ps1 cleanup``, then delete ``$Store`` on both PCs (it holds Wi-Fi passwords, tokens and saved logins).")
     $path = Join-Path $Store 'CHECKLIST.md'
     $L | Set-Content $path -Encoding UTF8
     $path
@@ -82,11 +110,21 @@ function Invoke-Verify {
     winget export -o $tmp --accept-source-agreements 2>&1 | Out-Null
     $now = @((Read-Json $tmp).Sources.Packages.PackageIdentifier)
     $was = @((Read-Json "$Store\apps\winget.json").Sources.Packages.PackageIdentifier)
-    foreach ($id in $was | Where-Object { $now -notcontains $_ }) { $gaps.Add("app $id") }
+    foreach ($id in $was | Where-Object { $now -notcontains $_ -and $Config.appSkip -notcontains $_ }) { $gaps.Add("app $id") }
+    $choco = Join-Path $env:ProgramData 'chocolatey\bin\choco.exe'
+    $wanted = @(Read-Json "$Store\apps\choco.json" | Where-Object { $_ })
+    $has = @(if ($wanted -and (Test-Path $choco)) { & $choco list --limit-output 2>$null | ForEach-Object { ("$_" -split '\|')[0] } })
+    foreach ($p in $wanted | Where-Object { $has -notcontains $_.Id }) { $gaps.Add("choco $($p.Id)") }
 
     $vars = Read-Json "$Store\env.json"
     foreach ($p in $vars.User.PSObject.Properties) {
         if ($null -eq [Environment]::GetEnvironmentVariable($p.Name, 'User')) { $gaps.Add("user env $($p.Name)") }
+    }
+    foreach ($p in $vars.Machine.PSObject.Properties) {
+        if ($null -eq [Environment]::GetEnvironmentVariable($p.Name, 'Machine')) { $gaps.Add("machine env $($p.Name)") }
+    }
+    foreach ($s in @(Get-ChildItem "$Store\postgres\*.tgz" -ErrorAction SilentlyContinue)) {
+        if (-not (Test-Path "$Store\postgres\$($s.BaseName).applied")) { $gaps.Add("database $($s.BaseName)") }
     }
     foreach ($it in $m.Plan) {
         $dst = ConvertTo-TargetPath $it.Path $m.Profile

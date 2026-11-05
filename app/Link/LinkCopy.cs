@@ -15,6 +15,10 @@ namespace Hopover.Link
     /// so the engine's pool, progress bar and resume list work unchanged.
     /// Rule (/XO): copy when the destination is missing, the source is newer, or the time is equal and the size differs.
     /// Nothing is ever deleted except an older destination file that is replaced. No ACLs and no alternate streams.
+    /// Junctions and symbolic links are made again as links, never followed.
+    /// Catch-up (/SYNC:ticks /HOLD:dir /SYNCLOG:dir): ticks = UTC end of the last finished pass. A file changed on both PCs
+    /// stays as it is here; the old PC's version goes to HOLD\old-pc-version. A file from an earlier pass that is gone on
+    /// the old PC moves to HOLD\removed-on-old-pc. A file made or changed on this PC since that pass is never touched.
     /// </summary>
     public static class LinkCopy
     {
@@ -31,6 +35,9 @@ namespace Hopover.Link
             public TextWriter Out;
             public bool Recurse, List;
             public int Retries = 1, WaitSec = 1;
+            public long Base;                   // /SYNC: 0 = plain copy
+            public string Hold, SyncLog;
+            public string LinkFrom, LinkTo;     // /LINKMAP: old profile -> new profile in link targets
             public List<string> XdNames = new List<string>(), XdPaths = new List<string>(), XfPatterns = new List<string>();
             public long Copied;
             public int FilesCopied, Failed;
@@ -119,10 +126,19 @@ namespace Hopover.Link
                         else c.XdNames.Add(v);
                     }
                 }
+                else if (u.StartsWith("/SYNC:")) long.TryParse(a.Substring(6), out c.Base);
+                else if (u.StartsWith("/HOLD:")) c.Hold = a.Substring(6);
+                else if (u.StartsWith("/SYNCLOG:")) c.SyncLog = Path.Combine(a.Substring(9), System.Diagnostics.Process.GetCurrentProcess().Id + ".txt");
+                else if (u.StartsWith("/LINKMAP:"))
+                {
+                    string[] m = a.Substring(9).Split('|');
+                    if (m.Length == 2) { c.LinkFrom = m[0]; c.LinkTo = m[1]; }
+                }
                 else if (u.StartsWith("/MT:")) int.TryParse(a.Substring(4), out mt);
                 else if (u.StartsWith("/R:")) int.TryParse(a.Substring(3), out c.Retries);
                 else if (u.StartsWith("/W:")) int.TryParse(a.Substring(3), out c.WaitSec);
             }
+            if (c.Hold == null) c.Base = 0;     // no place to keep what moves aside: plain copy
             if (pos.Count < 2) { Say(c, "ERROR usage: --link copy SRC DST [FILE...] [/E] [/XD ...] [/XF ...]"); return 16; }
             mt = Math.Max(1, Math.Min(mt, 8));
 
@@ -215,23 +231,29 @@ namespace Hopover.Link
 
         static void Walk(Ctx c, BlockingCollection<Job> queue, string root, string rel, string dstDir, List<Entry> entries)
         {
+            if (c.Base > 0 && !c.List) Sweep(c, root, rel, dstDir, entries);
             foreach (var e in entries)
             {
-                if (e.IsReparse)                                    // /XJ: junctions and symlinks are never followed
-                {
-                    Say(c, "SKIPPED link " + Path.Combine(dstDir, e.Name));
-                    continue;
-                }
                 string childRel = rel.Length == 0 ? e.Name : rel + "\\" + e.Name;
                 string childDst = Path.Combine(dstDir, e.Name);
+                if (e.IsReparse)                                    // /XJ: never followed; junctions and symlinks come as links
+                {
+                    if (e.IsDir && (c.XdNames.Any(p => Wild(p, e.Name)) || c.XdPaths.Contains(Canon(root, childRel)))) continue;
+                    if (!e.IsDir && c.XfPatterns.Any(p => Wild(p, e.Name))) continue;
+                    if (string.IsNullOrEmpty(e.Target) || c.List) Say(c, "SKIPPED link " + childDst);
+                    else MakeLink(c, childDst, e);
+                    continue;
+                }
                 if (e.IsDir)
                 {
                     if (!c.Recurse) continue;
                     if (c.XdNames.Any(p => Wild(p, e.Name)) || c.XdPaths.Contains(Canon(root, childRel))) continue;
                     if (!c.List)
                     {
+                        bool fresh = c.Base > 0 && !Directory.Exists(Lp(childDst));
                         try { Directory.CreateDirectory(Lp(childDst)); }
                         catch (Exception ex) { Fail(c, childDst, ex); continue; }
+                        if (fresh) GiveToUser(childDst);
                         lock (c.Dirs) c.Dirs.Add(new KeyValuePair<string, Entry>(childDst, e));
                     }
                     List<Entry> sub;
@@ -245,6 +267,129 @@ namespace Hopover.Link
                     queue.Add(new Job { Root = root, Rel = childRel, Dst = childDst, E = e });
                 }
             }
+        }
+
+        /// <summary>
+        /// A catch-up does not walk the whole tree with icacls. A folder that arrives now (a new repo) needs the user as
+        /// its owner all the same: this process is elevated, and git refuses a repo that belongs to the Administrators group.
+        /// </summary>
+        static void GiveToUser(string dir)
+        {
+            try
+            {
+                var ds = new System.Security.AccessControl.DirectorySecurity();
+                ds.SetOwner(System.Security.Principal.WindowsIdentity.GetCurrent().User);
+                Directory.SetAccessControl(Lp(dir), ds);
+            }
+            catch (Exception) { }
+        }
+
+        static void MakeLink(Ctx c, string dst, Entry e)
+        {
+            try
+            {
+                // Something at this name stays: a link made earlier, or a folder of this PC.
+                try { File.GetAttributes(Lp(dst)); return; } catch (FileNotFoundException) { } catch (DirectoryNotFoundException) { }
+                Directory.CreateDirectory(Lp(Path.GetDirectoryName(dst)));
+                string v = e.Target;
+                if (c.LinkFrom != null && v.Length > 2 && !v.StartsWith("R|"))
+                {
+                    string t = v.Substring(2);
+                    if (t.StartsWith(c.LinkFrom + "\\", StringComparison.OrdinalIgnoreCase) || t.Equals(c.LinkFrom, StringComparison.OrdinalIgnoreCase))
+                        v = v.Substring(0, 2) + c.LinkTo + t.Substring(c.LinkFrom.Length);
+                }
+                Reparse.Create(dst, v, e.IsDir);
+            }
+            catch (Exception ex) { Say(c, "SKIPPED link " + dst + " : " + ex.Message.Replace('\n', ' ')); }
+        }
+
+        // ---------- catch-up ----------
+        static string HoldPath(Ctx c, string kind, string path)
+        {
+            // C:\x\y -> HOLD\kind\C\x\y
+            string full = path.StartsWith(@"\\?\") ? path.Substring(4) : path;
+            return Path.Combine(c.Hold, kind, full.Substring(0, 1) + full.Substring(2));
+        }
+
+        static void SyncNote(Ctx c, string text)
+        {
+            if (c.SyncLog == null) return;
+            lock (c.OutLock) { try { File.AppendAllText(c.SyncLog, text + "\r\n", Encoding.UTF8); } catch (Exception) { } }
+        }
+
+        /// <summary>An earlier pass copied this file (times from the old PC) and nobody changed it here since.</summary>
+        static bool FromOldPc(Ctx c, FileSystemInfo f)
+        {
+            return f.CreationTimeUtc.Ticks <= c.Base && f.LastWriteTimeUtc.Ticks <= c.Base;
+        }
+
+        /// <summary>What exists here but no longer on the old PC moves to the hold folder. Excluded names and links stay.</summary>
+        static void Sweep(Ctx c, string root, string rel, string dstDir, List<Entry> entries)
+        {
+            var have = new HashSet<string>(entries.Select(e => e.Name), StringComparer.OrdinalIgnoreCase);
+            FileSystemInfo[] local;
+            try { local = new DirectoryInfo(Lp(dstDir)).GetFileSystemInfos(); }
+            catch (Exception) { return; }
+            foreach (var l in local)
+            {
+                if (have.Contains(l.Name) || (l.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+                string childRel = rel.Length == 0 ? l.Name : rel + "\\" + l.Name;
+                string path = Path.Combine(dstDir, l.Name);
+                if (l is DirectoryInfo)
+                {
+                    if (c.XdNames.Any(p => Wild(p, l.Name)) || c.XdPaths.Contains(Canon(root, childRel))) continue;
+                    HoldTree(c, path);
+                }
+                else
+                {
+                    if (l.Name.EndsWith(".hopover-part") || l.Name.EndsWith(".hopover-part.meta") || c.XfPatterns.Any(p => Wild(p, l.Name))) continue;
+                    if (FromOldPc(c, l)) HoldFile(c, path);
+                }
+            }
+        }
+
+        static void HoldTree(Ctx c, string dir)
+        {
+            try
+            {
+                foreach (var f in new DirectoryInfo(Lp(dir)).GetFileSystemInfos())
+                {
+                    if ((f.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+                    string path = Path.Combine(dir, f.Name);
+                    if (f is DirectoryInfo) HoldTree(c, path);
+                    else if (FromOldPc(c, f)) HoldFile(c, path);
+                }
+                Directory.Delete(Lp(dir));      // only when nothing is left in it
+            }
+            catch (Exception) { }
+        }
+
+        static void HoldFile(Ctx c, string path)
+        {
+            try
+            {
+                string to = HoldPath(c, "removed-on-old-pc", path);
+                Directory.CreateDirectory(Lp(Path.GetDirectoryName(to)));
+                File.Move(Lp(path), Lp(to));
+                SyncNote(c, "REMOVED\t" + path);
+            }
+            catch (Exception e) { Say(c, "SKIPPED moving " + path + " : " + e.Message.Replace('\n', ' ')); }
+        }
+
+        /// <summary>Catch-up decision before the /XO rule. True: copy now (j.Dst can be the hold folder). False: leave it.</summary>
+        static bool SyncDecide(Ctx c, Job j, out bool force)
+        {
+            force = false;
+            var fi = new FileInfo(Lp(j.Dst));
+            if (!fi.Exists) return true;
+            long dm = fi.LastWriteTimeUtc.Ticks;
+            if (dm <= c.Base) return true;                      // not changed here: the /XO rule decides
+            if (j.E.MTime <= c.Base) return false;              // changed only here: stays
+            if (Math.Abs(dm - j.E.MTime) <= TwoSec && fi.Length == j.E.Size) return false;
+            SyncNote(c, "CONFLICT\t" + j.Dst);
+            j.Dst = HoldPath(c, "old-pc-version", j.Dst);
+            force = true;
+            return true;
         }
 
         static void ApplyDirTimes(Ctx c)
@@ -277,7 +422,9 @@ namespace Hopover.Link
 
         static void CopyFile(Ctx c, Job j)
         {
-            if (!NeedsCopy(j.Dst, j.E)) return;
+            bool force = false;
+            if (c.Base > 0 && !c.List && !SyncDecide(c, j, out force)) return;
+            if (!force && !NeedsCopy(j.Dst, j.E)) return;
             if (c.List)
             {
                 Bytes(c, "New File", j.E.Size, j.Dst);
@@ -289,11 +436,33 @@ namespace Hopover.Link
                 try { DoCopy(c, j); return; }
                 catch (Exception e)
                 {
+                    // A live PC: temp files vanish, some files stay locked, some keep changing. They must not fail
+                    // the chunk for ever (and hold the whole step). The log lists them; a catch-up tries them again.
+                    if (IsGone(e)) { DropPart(j); return; }
+                    bool busy = e is LinkException && e.Message == "locked";
+                    bool moving = e is IOException && e.Message.StartsWith("the source file changed");
+                    if (busy || (moving && attempt >= c.Retries))
+                    {
+                        DropPart(j);
+                        Say(c, "ERROR not copied (" + (busy ? "locked" : "keeps changing") + " on the old PC): " + j.Dst);
+                        return;
+                    }
                     if (attempt >= c.Retries) throw;
                     Say(c, "Retry " + (attempt + 1) + ": " + j.Dst + " : " + e.Message.Replace('\n', ' '));
                     Thread.Sleep(Math.Max(0, c.WaitSec) * 1000);
                 }
             }
+        }
+
+        static void DropPart(Job j)
+        {
+            try
+            {
+                string part = j.Dst + ".hopover-part";
+                if (File.Exists(Lp(part + ".meta"))) return;    // a big file resumes from here
+                File.Delete(Lp(part));
+            }
+            catch (Exception) { }
         }
 
         static bool ReadMeta(string meta, Entry e, out long offset)

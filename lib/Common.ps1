@@ -68,6 +68,12 @@ function Invoke-Wsl([string[]]$Arguments) {
     ($out | ForEach-Object { "$_" -replace "`0", '' }) | Where-Object { $_.Trim() -ne '' }
 }
 
+function Invoke-WslRoot([string]$Distro, [string]$Script) {
+    # As base64: no quoting of the script survives the way through wsl.exe and a shell.
+    $b = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Script.Replace("`r`n", "`n")))
+    Invoke-Wsl @('-d', $Distro, '-u', 'root', '-e', 'sh', '-c', "echo $b | base64 -d | sh")
+}
+
 function Get-WslDistros {
     # Without WSL, or with no distro, wsl.exe prints localised help text and fails: no distros then.
     if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) { return @() }
@@ -84,6 +90,42 @@ function Test-WslReady {
     # winget installs the WSL app, but WSL 2 also needs the Virtual Machine Platform feature (and a restart).
     $vmp = Get-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform -ErrorAction SilentlyContinue
     -not $vmp -or $vmp.State -eq 'Enabled'
+}
+
+# Environment variables as the registry holds them: %JAVA_HOME%\bin stays %JAVA_HOME%\bin. The .NET calls expand them
+# on read and write REG_SZ, so a PATH with %SystemRoot% in it would stop working.
+function Open-EnvKey([string]$Scope, [bool]$Write = $false) {
+    if ($Scope -eq 'User') { return [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $Write) }
+    [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey('SYSTEM\CurrentControlSet\Control\Session Manager\Environment', $Write)
+}
+
+function Get-RawEnv([string]$Scope) {
+    $k = Open-EnvKey $Scope
+    $h = [ordered]@{}
+    foreach ($n in $k.GetValueNames()) { if ($n) { $h[$n] = "$($k.GetValue($n, $null, 'DoNotExpandEnvironmentNames'))" } }
+    $k.Close()
+    [pscustomobject]$h
+}
+
+function Get-RawEnvValue([string]$Scope, [string]$Name) {
+    $k = Open-EnvKey $Scope
+    $v = $k.GetValue($Name, $null, 'DoNotExpandEnvironmentNames')
+    $k.Close()
+    $v
+}
+
+function Set-RawEnvValue([string]$Scope, [string]$Name, [string]$Value) {
+    $k = Open-EnvKey $Scope $true
+    $kind = if ($Value -match '%[^%]+%') { 'ExpandString' } else { 'String' }
+    $k.SetValue($Name, $Value, $kind)
+    $k.Close()
+}
+
+# Windows hears about the new values through this call (it broadcasts WM_SETTINGCHANGE).
+function Send-EnvChanged { [Environment]::SetEnvironmentVariable('HOPOVER_ENV_TOUCH', $null, 'User') }
+
+function ConvertTo-WslPath([string]$Path) {
+    '/mnt/' + $Path.Substring(0, 1).ToLower() + '/' + $Path.Substring(3).Replace('\', '/')
 }
 
 function Test-UnderAny([string]$Path, [string[]]$Roots) {

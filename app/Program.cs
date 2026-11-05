@@ -76,7 +76,13 @@ namespace Hopover.App
                         string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hopover");
                         Directory.CreateDirectory(dir);
                         run = Path.Combine(dir, "Hopover.exe");
-                        File.Copy(exe, run, true);
+                        // The copy from an earlier run can still run (or serve the link): then one copy per build.
+                        try { File.Copy(exe, run, true); }
+                        catch (IOException)
+                        {
+                            run = Path.Combine(dir, "Hopover-" + File.GetLastWriteTimeUtc(exe).Ticks + ".exe");
+                            if (!File.Exists(run)) File.Copy(exe, run, false);
+                        }
                         string custom = Path.Combine(Path.GetDirectoryName(exe), "include.json");
                         if (File.Exists(custom)) File.Copy(custom, Path.Combine(dir, "include.json"), true);
                     }

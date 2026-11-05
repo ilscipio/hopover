@@ -52,6 +52,10 @@ namespace Hopover.App
                     case "c-root": return "Folder on C:";
                     case "drive": return "Drive";
                     case "keepass": return "KeePass";
+                    case "program": return "Program without installer";
+                    case "programdata": return "Program data";
+                    case "cache": return "Cache (only time)";
+                    case "extra": return "Folder";
                     default: return Why ?? "";
                 }
             }

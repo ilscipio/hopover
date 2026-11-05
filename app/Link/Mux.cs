@@ -16,22 +16,25 @@ namespace Hopover.Link
         public int Attrs;
         public long Size, CTime, MTime;
         public string Name;
+        /// <summary>For a junction or symbolic link: Reparse.Read()'s value. Empty for anything else.</summary>
+        public string Target;
         public bool IsDir { get { return (Attrs & 0x10) != 0; } }
         public bool IsReparse { get { return (Attrs & 0x400) != 0; } }
 
         public static Entry Parse(string line)
         {
-            string[] p = line.Split(new[] { '\t' }, 5);
+            string[] p = line.Split(new[] { '\t' }, 6);
             if (p.Length < 5) return null;
             return new Entry
             {
                 Attrs = int.Parse(p[0]), Size = long.Parse(p[1]), CTime = long.Parse(p[2]), MTime = long.Parse(p[3]), Name = p[4],
+                Target = p.Length > 5 ? p[5] : null,
             };
         }
 
         public static string Format(Entry e)
         {
-            return e.Attrs + "\t" + e.Size + "\t" + e.CTime + "\t" + e.MTime + "\t" + e.Name;
+            return e.Attrs + "\t" + e.Size + "\t" + e.CTime + "\t" + e.MTime + "\t" + e.Name + (string.IsNullOrEmpty(e.Target) ? "" : "\t" + e.Target);
         }
     }
 
@@ -83,6 +86,7 @@ namespace Hopover.Link
         {
             internal readonly uint Sid;
             internal readonly BlockingCollection<KeyValuePair<byte, byte[]>> Q = new BlockingCollection<KeyValuePair<byte, byte[]>>();
+            const int Timeout = 300000;
             readonly MuxClient owner;
             bool done;
             internal Call(MuxClient o, uint sid) { owner = o; Sid = sid; }
@@ -91,7 +95,13 @@ namespace Hopover.Link
             public byte[] Next()
             {
                 if (done) return null;
-                var item = Q.Take();
+                // A live connection to an old PC that stopped answering must fail the chunk, not hold it for ever.
+                KeyValuePair<byte, byte[]> item;
+                if (!Q.TryTake(out item, Timeout))
+                {
+                    Cancel();
+                    throw new LinkException("the old PC did not answer for " + Timeout / 60000 + " minutes");
+                }
                 if (item.Key == Msg.Data) return item.Value;
                 done = true;
                 owner.Forget(Sid);
@@ -220,6 +230,24 @@ namespace Hopover.Link
         public string Info()
         {
             return Encoding.UTF8.GetString(Request(new Dictionary<string, object> { { "op", "info" } }).ReadAll());
+        }
+
+        /// <summary>
+        /// Asks the old PC to prepare its changes (hopover.ps1 export -Refresh). Its output lines come back one by
+        /// one; the last line is "##REFRESHED exitcode". The old PC sends "." while it works without a word.
+        /// </summary>
+        public int Refresh(Action<string> line)
+        {
+            var call = Request(new Dictionary<string, object> { { "op", "refresh" } });
+            int code = 16;
+            byte[] chunk;
+            while ((chunk = call.Next()) != null)
+                foreach (string l in Encoding.UTF8.GetString(chunk).Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (l.StartsWith("##REFRESHED ")) int.TryParse(l.Substring(12), out code);
+                    else if (l != ".") line(l);
+                }
+            return code;
         }
 
         public byte[] ReadAllBytes(string root, string path)

@@ -23,7 +23,11 @@ param(
     [ValidateSet('gentle', 'balanced', 'full')]
     [string]$Speed = 'balanced',
     [switch]$Recopy,
-    [switch]$WhatIf
+    [switch]$WhatIf,
+    # export -Refresh: the old PC only updates what changed (no scan with sizes, no certificates, no link start).
+    [switch]$Refresh,
+    # import -Catchup: the new PC fetches what changed on the old PC since the last pass.
+    [switch]$Catchup
 )
 
 $ErrorActionPreference = 'Continue'
@@ -95,9 +99,19 @@ function Invoke-Inventory {
     Write-Step 'Inventory'
     Send-Event STEP 'inventory start'
     $plan = @(Get-CopyPlan $Config)
+    # A refresh runs while the user works on this PC: the sizes of the last scan are good enough.
+    if ($Refresh) {
+        $before = @{}
+        foreach ($p in @((Read-Json "$Store\manifest.json").Plan)) { if ($p) { $before["$($p.Kind)|$($p.Path)"] = $p } }
+        foreach ($p in $plan) {
+            $o = $before["$($p.Kind)|$($p.Path)"]
+            $p | Add-Member -NotePropertyName Bytes -NotePropertyValue $(if ($o) { [int64]$o.Bytes } else { [int64]0 }) -Force
+            $p | Add-Member -NotePropertyName Files -NotePropertyValue $(if ($o) { [int64]$o.Files } else { [int64]0 }) -Force
+        }
+    }
     # Export measures too when it has to scan again: without sizes the progress bar and the
     # largest-first order break on the new PC.
-    if ($Sizes -or $Command -in 'inventory', 'export') {
+    elseif ($Sizes -or $Command -in 'inventory', 'export') {
         Write-Note "$($plan.Count) chunks; measuring them in parallel"
         Measure-Plan $plan @(Get-RobocopyExcludes $Config) $Speed
         $total = ($plan | Measure-Object Bytes -Sum).Sum
@@ -273,17 +287,25 @@ function Invoke-Export {
     Assert-Admin
     # Export only reads and shares; a dry run would still stop WSL and open shares.
     if ($WhatIf) { throw 'export has no dry run. Run inventory to see what would move.' }
+    if ($Refresh) { $null = Invoke-Inventory }
     $m = Get-ExportManifest
     Invoke-Phase 'apps'     'Apps'                  { Export-Apps $Store $Config }
     Invoke-Phase 'env'      'Environment variables' { Export-EnvVars $Store }
+    Invoke-Phase 'system'   'System: hosts, Windows features, saved logins, VPN' { Export-System $Store $Config }
     Invoke-Phase 'settings' 'Settings, Wi-Fi, drives, printers' { Export-Settings $Store $Config }
-    Invoke-Phase 'certs'    'Personal certificates' {
-        if ($m.Certs) { Export-Certs $Store (Get-CertPassword 'Password for the certificate export (you type it again on the new PC)') }
-        else { Write-Note 'none' }
+    if (-not $Refresh) {
+        Invoke-Phase 'certs' 'Personal certificates' {
+            if ($m.Certs) { Export-Certs $Store (Get-CertPassword 'Password for the certificate export (you type it again on the new PC)') }
+            else { Write-Note 'none' }
+        }
     }
     Invoke-Phase 'tasks'    'Scheduled tasks'       { Export-Tasks $Store $Config }
-    Invoke-Phase 'wsl'      'WSL distros (each distro stops while it exports)' { Export-Wsl $Store $Config }
+    Invoke-Phase 'wsl'      'WSL distros (each distro stops while it exports)' {
+        if ($Refresh) { Export-WslDelta $Store } else { Export-Wsl $Store $Config }
+    }
     Invoke-Phase 'docker'   'Docker named volumes'  { Export-DockerVolumes $Store }
+    Invoke-Phase 'databases' 'PostgreSQL'           { Export-Databases $Store }
+    if ($Refresh) { return }
     Write-Step 'Copy the tool into the store'
     Publish-Tool
     Write-Checklist $Store $m @{} | Out-Null
@@ -299,9 +321,40 @@ function Connect-OldPc {
     Write-Note "Linked to the old PC: $($out.Trim())"
 }
 
+function Request-OldPcRefresh {
+    # The old PC runs its own "export -Refresh"; its output comes back through the link.
+    Write-Step 'Ask the old PC for its changes'
+    Send-Event STEP 'refresh start'
+    & (Get-LinkExe) --link refresh | ForEach-Object { Write-Note "old PC: $_" }
+    $rc = $LASTEXITCODE
+    if ($rc -eq 0) { Send-Event STEP 'refresh done'; return }
+    Send-Event STEP 'refresh failed'
+    # 2: some of its steps failed; the rest of the catch-up still makes sense.
+    if ($rc -ne 2) { throw "The old PC could not prepare its changes (exit $rc). Is Hopover still open there?" }
+    Write-Warn 'Some steps on the old PC failed: the catch-up takes what is there.'
+}
+
+function Get-SyncNotes([string]$Dir, [string]$Hold, [hashtable]$Notes) {
+    # Each copy process keeps its own list. Together they tell the user what to look at.
+    $lines = @(Get-ChildItem "$Dir\*.txt" -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -Encoding UTF8 })
+    $Notes.Conflicts = @($lines | Where-Object { $_ -like 'CONFLICT*' } | ForEach-Object { ($_ -split "`t", 2)[1] })
+    $Notes.Removed = @($lines | Where-Object { $_ -like 'REMOVED*' } | ForEach-Object { ($_ -split "`t", 2)[1] })
+    $Notes.Hold = $Hold
+    if ($lines) {
+        New-Item -ItemType Directory -Path $Hold -Force | Out-Null
+        $lines | Sort-Object | Set-Content "$Hold\list.txt" -Encoding UTF8
+    }
+    Write-Note "$($Notes.Conflicts.Count) files changed on both PCs (this PC's version stays), $($Notes.Removed.Count) gone on the old PC"
+}
+
 function Invoke-Import {
     Assert-Admin
     Connect-OldPc
+    $baseline = Read-Json "$Store\baseline.json"
+    if ($Catchup) {
+        if (-not $baseline) { throw 'Finish the first copy of the files, then catch up.' }
+        Request-OldPcRefresh
+    }
     Write-Step "Copy the store from the old PC to $Store"
     Send-Event STEP 'store start'
     $rc = Invoke-LinkCopy @('\\link\hopover-store', $Store, '/E', '/XD', 'logs', 'tool', '/XF', 'state-*.json', 'firewall-enabled.json', 'deselected.json', '/MT:8', '/R:1', '/W:1')
@@ -317,17 +370,34 @@ function Invoke-Import {
     # Order: env first (installers then add to the merged PATH), apps in the background,
     # files and WSL meanwhile; settings, Docker and tasks wait for the apps they belong to.
     Invoke-Phase 'env'      'Environment variables' { $notes.EnvConflicts = @(Import-EnvVars $Store $old -WhatIf:$WhatIf) }
+    Invoke-Phase 'system'   'System: hosts, Windows features, saved logins' {
+        Import-System $Store -WhatIf:$WhatIf
+        if (-not $WhatIf) { Import-UserUninstall $Store $old $m.Plan }
+    }
     $bg = $null
     if (Use-Step 'apps') { $bg = Start-BackgroundApps } else { Send-Event STEP 'apps skipped' }
     Invoke-Phase 'files'    "Files from the old PC ($(@($m.Plan).Count) chunks)" {
-        $notes.CopyFailed = @(Copy-Plan $m.Plan $From $old @($m.Excludes) $Store $Speed { Test-BackgroundApps $bg } -Recopy:$Recopy -WhatIf:$WhatIf)
+        $stamp = Get-Date -Format yyyyMMdd-HHmmss
+        $sync = @{}
+        if ($Catchup -and -not $WhatIf) {
+            # The hold folder is outside the store: the store gets deleted, and this is the user's data.
+            $sync = @{ SyncBase = [int64]$baseline.Ticks; Hold = "C:\hopover-held\$stamp"; SyncLog = "$Store\logs\sync-$stamp" }
+            New-Item -ItemType Directory -Path $sync.SyncLog -Force | Out-Null
+        }
+        $notes.CopyFailed = @(Copy-Plan $m.Plan $From $old @($m.Excludes) $Store $Speed { Test-BackgroundApps $bg } -Recopy:($Recopy -or $Catchup) -WhatIf:$WhatIf @sync)
         $notes.JunctionFailed = @(Restore-Junctions $m.Junctions $old -WhatIf:$WhatIf)
+        if ($sync.Count) { Get-SyncNotes $sync.SyncLog $sync.Hold $notes }
         # Not "done" while chunks failed: the next start copies only those again.
         if ($notes.CopyFailed.Count) { throw "$($notes.CopyFailed.Count) chunks did not copy completely" }
+        # From here on a change on this PC is a change of the user: a catch-up protects it. Only after a complete
+        # pass: an older mark protects more, never less.
+        if (-not $WhatIf) { Write-Json ([pscustomobject]@{ Ticks = "$((Get-Date).ToUniversalTime().Ticks)"; Time = (Get-Date).ToString('s') }) "$Store\baseline.json" }
     }
-    Invoke-Phase 'certs'    'Personal certificates' {
-        if (Test-Path "$Store\certs\*.pfx") { Import-Certs $Store (Get-CertPassword 'Certificate export password from the old PC') -WhatIf:$WhatIf }
-        else { Write-Note 'none' }
+    if (-not $Catchup) {
+        Invoke-Phase 'certs' 'Personal certificates' {
+            if (Test-Path "$Store\certs\*.pfx") { Import-Certs $Store (Get-CertPassword 'Certificate export password from the old PC') -WhatIf:$WhatIf }
+            else { Write-Note 'none' }
+        }
     }
     Wait-BackgroundApps $bg
     # The installers changed PATH (docker, git, node): this process still has the old one.
@@ -336,10 +406,11 @@ function Invoke-Import {
     Invoke-Phase 'wsl'      'WSL distros'           { Import-Wsl $Store -WhatIf:$WhatIf }
     # After the installs: an installer would overwrite app settings imported before it.
     Invoke-Phase 'settings' 'Windows and app settings, Wi-Fi, drives, printers' {
-        Import-Settings $Store $old -WhatIf:$WhatIf
+        Import-Settings $Store $old $Config -ChangedOnly:$Catchup -WhatIf:$WhatIf
         Restore-NodeLink $m.NodeLink $old -WhatIf:$WhatIf
     }
     Invoke-Phase 'docker'   'Docker named volumes'  { Import-DockerVolumes $Store -WhatIf:$WhatIf }
+    Invoke-Phase 'databases' 'PostgreSQL'           { Import-Databases $Store -WhatIf:$WhatIf }
     Invoke-Phase 'tasks'    'Scheduled tasks (imported switched off)' { $notes.TaskFailed = @(Import-Tasks $Store $old $m.User -WhatIf:$WhatIf) }
 
     $list = Write-Checklist $Store $m $notes

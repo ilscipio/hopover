@@ -57,11 +57,13 @@ namespace Hopover.Link
                     case "info":
                         using (var m = MuxClient.ConnectFromEnv()) say(m.Info());
                         return 0;
+                    case "refresh":
+                        using (var m = MuxClient.ConnectFromEnv()) return m.Refresh(say);
                     case "serve": return Serve(a, say);
                     case "proxy": return Proxy(a, say);
                     case "stub": return Stub.Run(int.Parse(Opt(a, "--port") ?? "47900"), say);
                     default:
-                        say("usage: Hopover.exe --link selftest|serve|proxy|copy|info|stub");
+                        say("usage: Hopover.exe --link selftest|serve|proxy|copy|info|refresh|stub");
                         return 2;
                 }
             }
@@ -76,6 +78,7 @@ namespace Hopover.Link
         {
             var so = new ServerOptions { Event = say, Rendezvous = DefaultRendezvous() };
             if (Opt(a, "--store") != null) so.Store = Opt(a, "--store");
+            so.Engine = Opt(a, "--engine");
             if (Opt(a, "--code") != null) so.FixedCode = Opt(a, "--code");
             if (Opt(a, "--tcp") != null) so.TcpPort = int.Parse(Opt(a, "--tcp"));
             if (Opt(a, "--udp") != null) so.UdpPort = int.Parse(Opt(a, "--udp"));

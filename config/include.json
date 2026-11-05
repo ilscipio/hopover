@@ -5,24 +5,67 @@
 
   "profileExclude": ["AppData", ".cache", ".thumbnails", ".dbus-keyrings", ".oracle_jre_usage", "seadrive_root", "OneDrive*", "NTUSER*", "ntuser*", "Searches", "IntelGraphicsProfiles", "MicrosoftEdgeBackups"],
 
-  "cRootExclude": ["Windows", "Program Files", "Program Files (x86)", "ProgramData", "Users", "Recovery", "PerfLogs", "System Volume Information", "$Recycle.Bin", "$WinREAgent", "$SysReset", "$Windows.~BT", "$Windows.~WS", "Config.Msi", "Documents and Settings", "MSOCache", "OneDriveTemp", "Intel", "AMD", "NVIDIA", "ESD", "inetpub", "Seafile", "hopover-store", "*.sys", "DumpStack.log*"],
+  "cRootExclude": ["Windows", "Program Files", "Program Files (x86)", "ProgramData", "Users", "Recovery", "PerfLogs", "System Volume Information", "$Recycle.Bin", "$WinREAgent", "$SysReset", "$Windows.~BT", "$Windows.~WS", "Config.Msi", "Documents and Settings", "Dokumente und Einstellungen", "Programme", "MSOCache", "OneDriveTemp", "Intel", "AMD", "NVIDIA", "ESD", "inetpub", "Seafile", "hopover-store", "hopover-held", "*.sys", "DumpStack.log*", "bootTel.dat", "appverifUI.dll", "vfcompat.dll"],
+
+  "_appData": "Every folder in Roaming and Local moves, except these names. The two lists after them bring back parts of what is left out.",
+  "appDataRoamingExclude": ["Microsoft", "1Password", "Google", "BraveSoftware", "Opera Software", "Vivaldi", "npm-cache", "NVIDIA", "PUTTY.RND", "winscp.rnd"],
+
+  "appDataLocalExclude": ["Temp", "Microsoft", "Packages", "Docker", "Docker Desktop Installer", "Google", "Mozilla", "BraveSoftware", "Vivaldi", "Opera Software", "Chromium", "CrashDumps", "D3DSCache", "NVIDIA", "NVIDIA Corporation", "AMD", "AMD_Common", "Comms", "ConnectedDevicesPlatform", "ElevatedDiagnostics", "PeerDistRepub", "PlaceholderTileLogoFolder", "Publishers", "ToastNotificationManagerCompat", "Package Cache", "SquirrelTemp", "SquirrelClowdTemp", "WindowsControlWebView2", "OneDrive", "1Password", "cache", "Hopover", "JetBrains", "*-updater", "IconCache.db", "*.ResmonCfg", "{*}", "CrashRpt", "CrashReportClient", "History", "INetHistory", "Backup", "Steam", "Epic Games", "EpicOnlineServicesUIHelper"],
+
+  "_appDataExcludeNames": "Folder names of the browser engine inside apps. Plain words like cache or logs stay out of this list: a Python or npm package has source folders with those names.",
+  "appDataExcludeNames": ["Cache_Data", "Code Cache", "GPUCache", "DawnCache", "DawnGraphiteCache", "DawnWebGPUCache", "ShaderCache", "GrShaderCache", "CachedData", "CachedExtensions", "CachedExtensionVSIXs", "CachedProfilesData", "Crashpad"],
 
   "appDataRoaming": [
-    "JetBrains", "nvm", "Code\\User", "Cursor\\User", "KeePass", "Claude", "npm",
-    "Notepad++", "FileZilla", "WinSCP.ini", "GitHub Desktop", "Postman", "Zed", "DBeaverData",
-    "Microsoft\\Signatures", "Microsoft\\Templates", "Microsoft\\UProof", "Microsoft\\Sticky Notes",
-    "Microsoft\\Windows\\Start Menu\\Programs", "Microsoft\\Windows\\PowerShell\\PSReadLine",
-    "Microsoft\\Windows\\Themes", "Thunderbird", "Mozilla\\Firefox",
+    "Microsoft\\Signatures", "Microsoft\\Templates", "Microsoft\\UProof", "Microsoft\\Sticky Notes", "Microsoft\\Proof", "Microsoft\\Spelling", "Microsoft\\AddIns", "Microsoft\\Excel\\XLSTART", "Microsoft\\Word\\STARTUP", "Microsoft\\PowerShell",
+    "Microsoft\\Windows\\Start Menu\\Programs", "Microsoft\\Windows\\PowerShell\\PSReadLine", "Microsoft\\Windows\\SendTo", "Microsoft\\Windows\\Network Shortcuts",
+    "Microsoft\\Windows\\Themes",
     "Microsoft\\Windows\\Recent\\AutomaticDestinations\\f01b4d95cf55d32a.automaticDestinations-ms",
     "Microsoft\\Internet Explorer\\Quick Launch\\User Pinned"
   ],
 
   "appDataLocal": [
     "Microsoft\\Windows\\Fonts",
+    "Microsoft\\Outlook\\Offline Address Books",
+    "Microsoft\\PowerToys",
+    "Microsoft\\WinGet\\Packages",
+    "Microsoft\\VisualStudio",
+    "Microsoft\\dotnet",
     "Packages\\Microsoft.WindowsTerminal_8wekyb3d8bbwe\\LocalState",
     "Packages\\Microsoft.MicrosoftStickyNotes_8wekyb3d8bbwe\\LocalState",
-    "JetBrains\\Toolbox\\.settings.json"
+    "Packages\\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\\LocalState\\start2.bin",
+    "Packages\\Microsoft.WindowsNotepad_8wekyb3d8bbwe\\LocalState",
+    "JetBrains\\Toolbox\\.settings.json",
+    "JetBrains\\Toolbox\\scripts"
   ],
+
+  "_caches": "Each path is a line in the list on the old PC: untick what you do not want. Nothing breaks without them, the tools only download again.",
+  "caches": [
+    "%USERPROFILE%\\.gradle\\caches",
+    "%USERPROFILE%\\.cache",
+    "%USERPROFILE%\\.cargo\\registry\\cache",
+    "%LOCALAPPDATA%\\JetBrains",
+    "%LOCALAPPDATA%\\npm-cache",
+    "%APPDATA%\\npm-cache",
+    "%LOCALAPPDATA%\\uv\\cache",
+    "%LOCALAPPDATA%\\pip\\Cache",
+    "%LOCALAPPDATA%\\Yarn\\Cache",
+    "%LOCALAPPDATA%\\go-build",
+    "%LOCALAPPDATA%\\ccache",
+    "%LOCALAPPDATA%\\pipenv",
+    "%LOCALAPPDATA%\\ms-playwright",
+    "%LOCALAPPDATA%\\ms-playwright-go",
+    "%LOCALAPPDATA%\\ms-playwright-mcp",
+    "%LOCALAPPDATA%\\NuGet\\v3-cache",
+    "%ProgramFiles(x86)%\\Steam\\steamapps"
+  ],
+
+  "_programs": "Installed programs that no package source has move as a folder, with their uninstall entry and machine registry key. programData brings their licences and data.",
+  "programData": ["Microsoft\\Windows\\Start Menu\\Programs", "Blackmagic Design", "Steinberg", "eLicenser", "Syncrosoft", "TechSmith", "Autodesk", "Affinity", "Embarcadero", "pp"],
+  "programPathSkip": "\\\\(Steam|steamapps|Microsoft[^\\\\]*|Common Files|Windows[^\\\\]*|Epic Games|GOG Galaxy|Origin Games|Ubisoft|NVIDIA[^\\\\]*|AMD|Realtek|Internet Explorer|Uninstall Information|Reference Assemblies|MSBuild)(\\\\|$)",
+  "extraPaths": ["C:\\Users\\Public\\Documents"],
+
+  "_appSearchSkip": "Names (regex) that are no software to move: drivers, Windows parts, the things Windows brings along.",
+  "appSearchSkip": "Driver|Chipset|^NVIDIA|^AMD|^Realtek|^Genesys|^Silicon Lab|^Control Center|^Microsoft |^Windows |Local Experience|Video Extension|Image Extension|^Ink\\.|^KYOCERA|vs_|Visual C\\+\\+|^GamingCenter|^Sound Blaster|^OneDrive$|^Paint$|^Snipping Tool$|^XBOX$|^Get Help$|^Mobile Plans$|^MSN Weather$|^Solitaire|^Start Experiences|^Store Experience|^Power Automate$|^OfficePush|^Mixed Reality|^Blackmagic RAW|^WinAppRuntime|^Widgets Platform|^Xbox |^Game Bar|^Game Speech|^Films & TV$|^Mail and Calendar$|^Phone Link$|^Feedback Hub$|^Dev Home$|^Quick Assist$|^Mobile devices$|^Local AI Manager|^Web Media Extensions$|^Notepad\\+\\+$|^Python$|^Ruby$|^WinRAR$|^Rockstar Games Social Club|^Steinberg Download Assistant",
 
   "otherDrives": "all-fixed",
 
@@ -30,10 +73,9 @@
 
   "excludeDirs": [
     "$RECYCLE.BIN", "System Volume Information", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
-    "%USERPROFILE%\\.gradle\\caches", "%USERPROFILE%\\.gradle\\daemon", "%USERPROFILE%\\.gradle\\native",
-    "%USERPROFILE%\\.cargo\\registry\\cache"
+    "%USERPROFILE%\\.gradle\\daemon", "%USERPROFILE%\\.gradle\\native"
   ],
-  "excludeFiles": ["hiberfil.sys", "pagefile.sys", "swapfile.sys", "~$*", "java_error_in_*.hprof"],
+  "excludeFiles": ["hiberfil.sys", "pagefile.sys", "swapfile.sys", "~$*", "java_error_in_*.hprof", "*.hopover-part", "*.hopover-part.meta"],
 
   "_registry": "Windows settings (HKCU) that are safe on another PC. No DPI, monitor or hardware keys.",
   "registry": [
@@ -41,6 +83,8 @@
     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\CabinetState",
     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Accent",
     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Taskband",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Ribbon",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VisualEffects",
     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Search",
     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\SearchSettings",
@@ -48,12 +92,31 @@
     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\PushNotifications",
     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings",
     "HKCU\\Software\\Microsoft\\Windows\\DWM",
     "HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Fonts",
+    "HKCU\\Software\\Microsoft\\Windows Script Host",
     "HKCU\\Software\\Microsoft\\Input\\Settings",
+    "HKCU\\Software\\Microsoft\\InputPersonalization",
+    "HKCU\\Software\\Microsoft\\IME",
     "HKCU\\Software\\Microsoft\\Clipboard",
     "HKCU\\Software\\Microsoft\\Terminal Server Client",
     "HKCU\\Software\\Microsoft\\Notepad",
+    "HKCU\\Software\\Microsoft\\Command Processor",
+    "HKCU\\Software\\Microsoft\\PowerShell",
+    "HKCU\\Software\\Microsoft\\Spelling",
+    "HKCU\\Software\\Microsoft\\Narrator",
+    "HKCU\\Software\\Microsoft\\ScreenMagnifier",
+    "HKCU\\Software\\Microsoft\\Osk",
+    "HKCU\\Software\\Microsoft\\TabletTip",
+    "HKCU\\Software\\Microsoft\\Personalization",
+    "HKCU\\Software\\Microsoft\\VisualStudio",
+    "HKCU\\Software\\Microsoft\\Office\\16.0\\Word",
+    "HKCU\\Software\\Microsoft\\Office\\16.0\\Excel",
+    "HKCU\\Software\\Microsoft\\Office\\16.0\\PowerPoint",
+    "HKCU\\Software\\Microsoft\\Office\\16.0\\Outlook\\Options",
+    "HKCU\\Software\\Microsoft\\Office\\16.0\\Outlook\\Preferences",
+    "HKCU\\Software\\Classes",
     "HKCU\\Control Panel\\International",
     "HKCU\\Control Panel\\Mouse",
     "HKCU\\Control Panel\\Keyboard",
@@ -65,13 +128,25 @@
     "HKCU\\Keyboard Layout\\Substitutes"
   ],
 
+  "_registryDropSections": "Sections (regex, on the [key] line) that the import leaves out of a .reg file: Store app registrations and this machine's own class data.",
+  "registryDropSections": "^\\[HKEY_CURRENT_USER\\\\Software\\\\Classes\\\\(Local Settings|ActivatableClasses|AppUserModelId|Installer|VirtualStore|AppX[^\\\\\\]]*|Extensions|PackagedCom|Applications\\\\[^\\\\\\]]*WindowsApps)",
+
   "_registryValues": "Single values from keys that also hold PC-specific data (DPI, monitors).",
   "registryValues": {
     "HKCU\\Control Panel\\Desktop": ["Wallpaper", "WallpaperStyle", "TileWallpaper", "MenuShowDelay", "CursorBlinkRate", "DragFullWindows", "FontSmoothing", "FontSmoothingType"]
   },
 
+  "_registryMachineValues": "Machine switches that a developer PC needs: long paths, Developer Mode.",
+  "registryMachineValues": {
+    "HKLM\\SYSTEM\\CurrentControlSet\\Control\\FileSystem": ["LongPathsEnabled"],
+    "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\AppModelUnlock": ["AllowDevelopmentWithoutDevLicense", "AllowAllTrustedApps"]
+  },
+
   "_registryVendors": "Every app vendor key under HKCU\\Software moves (app settings live there), except these.",
-  "registryVendorsExclude": ["Microsoft", "Classes", "Policies", "Wow6432Node", "WOW6432Node", "AppDataLow", "Clients", "RegisteredApplications", "Intel", "NVIDIA Corporation", "AMD", "ATI", "Realtek", "Synaptics", "Elantech", "Dolby", "Waves", "Chromium", "Google", "Mozilla", "Microsoft Corporation", "Windows", "Hewlett-Packard", "Dell", "Lenovo", "ASUS", "Logitech"],
+  "registryVendorsExclude": ["Microsoft", "Classes", "Policies", "Wow6432Node", "WOW6432Node", "AppDataLow", "Clients", "RegisteredApplications", "Intel", "NVIDIA Corporation", "AMD", "ATI", "ATI Technologies", "Realtek", "Realtek Semiconductor Corp.", "Synaptics", "Elantech", "Dolby", "Waves", "Chromium", "Google", "Mozilla", "Microsoft Corporation", "Windows", "Hewlett-Packard", "Dell", "Lenovo", "ASUS", "Logitech", "LogiShrd", "OpenSSH", "ChangeTracker", "DeviceInfo", "SyncEngines", "IM Providers", "Netscape", "????????-????-????-????-????????????"],
+
+  "_registryMachine": "HKLM\\SOFTWARE keys that never move, on top of the list above. The import skips a key that already exists on the new PC.",
+  "registryMachineExclude": ["AGEIA Technologies", "CVSM", "DefaultUserEnvironment", "OEM", "Partner", "Setup", "SyncIntegrationClients", "SystemFileAssociations", "Volatile", "RTLSetup", "PEPrinter", "Kyocera", "Kyocera Mita", "Docker Inc.", "dotnet", "GitForWindows", "JavaSoft", "Khronos", "ODBC", "Applications", "AIX", "AIX INSTALLER", "AUEP", "AMDLOG", "INextUUID", "Yamaha", "ASIO", "OpenAL", "Creative Tech"],
 
   "chunkDepth": { "c-root": 2, "drive": 2, "profile": 1 },
 
@@ -88,12 +163,24 @@
     "^Ruby 3[.]1": "RubyInstallerTeam.Ruby.3.1",
     "^Adobe Acrobat": "Adobe.Acrobat.Reader.64-bit",
     "^Webex": "Cisco.Webex",
-    "^OpenSCAD": "OpenSCAD.OpenSCAD"
+    "^OpenSCAD": "OpenSCAD.OpenSCAD",
+    "^Microsoft 365 Apps": "Microsoft.Office",
+    "^FileZilla": "TimKosse.FileZilla.Client"
   },
 
   "priorityApps": ["AgileBits.1Password", "DominikReichl.KeePass", "Microsoft.OneDrive", "Seafile.Seadrive", "Git.Git", "Microsoft.PowerShell", "Microsoft.WindowsTerminal"],
 
-  "taskExclude": "S-1-5-21-|OneDrive|Zoom|NVIDIA|Adobe|SoftLanding|GoogleUserPEH|GoogleUpdate|MicrosoftEdgeUpdate|Agent Activation|StartCN|StartDVR|Snagit|RPCServiceHealthCheck",
+  "_appSkip": "winget ids that make no sense on another PC, or that wait for a click.",
+  "appSkip": ["Microsoft.WindowsInstallationAssistant", "Microsoft.WindowsPCHealthCheck", "Microsoft.AppInstaller"],
+
+  "chocoSkip": "^(chocolatey|KB\\d|vcredist|golang$|imagemagick|pandoc$)",
+
+  "featureSkip": "^(Windows-Defender|Printing|SearchEngine|WorkFolders|Internet-Explorer|MicrosoftWindowsPowerShellV2|SmbDirect|SMB1Protocol|MediaPlayback|WindowsMediaPlayer|MSRDC)",
+
+  "_credSkip": "Saved logins that belong to this PC or to a Microsoft sign-in. Everything else moves.",
+  "credSkip": "MicrosoftAccount|WindowsLive|XboxLive|Xbl|OneDrive|MicrosoftOffice|SSO_POP|virtualapp|msteams|^teams|^Olk/|Microsoft_OC|LegacyGeneric:target=.*teams",
+
+  "taskExclude": "S-1-5-21-|OneDrive|Zoom|NVIDIA|Adobe|SoftLanding|GoogleUserPEH|GoogleUpdate|MicrosoftEdgeUpdate|Agent Activation|StartCN|StartDVR|Snagit|RPCServiceHealthCheck|Hopover",
 
   "wslSkip": ["docker-desktop", "docker-desktop-data"]
 }

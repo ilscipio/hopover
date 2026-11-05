@@ -25,7 +25,10 @@ namespace Hopover.App
 
         public EngineRun(Dispatcher ui) { this.ui = ui; }
 
-        public bool Running => proc != null && !proc.HasExited;
+        public bool Running
+        {
+            get { try { return proc != null && !proc.HasExited; } catch (InvalidOperationException) { return false; } }
+        }
 
         public void Start(string engineDir, IEnumerable<string> args, IDictionary<string, string> env = null)
         {
@@ -77,8 +80,10 @@ namespace Hopover.App
             var p = proc;
             Task.Run(() =>
             {
-                // WaitForExit() without a timeout also waits for the last output line.
-                p.WaitForExit();
+                // WaitForExit() without a timeout also waits for the end of the pipes, and a program that an
+                // installer left running (Docker Desktop, Ollama, ...) holds them open for hours.
+                while (!p.WaitForExit(1000)) { }
+                Task.Run(() => p.WaitForExit()).Wait(3000);    // the last output lines, a moment at most
                 int code = p.ExitCode;
                 ui.BeginInvoke(new Action(() => OnExit?.Invoke(code)));
             });

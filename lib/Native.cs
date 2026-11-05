@@ -29,6 +29,94 @@ namespace Hopover
         }
     }
 
+    // Generic Windows Credential Manager entries (git, gh, docker, ...). Each one belongs to this user; a process of
+    // this user reads and writes them in clear. Domain passwords are not readable, and Windows keeps those to itself.
+    public class Cred
+    {
+        public string Target;
+        public string User;
+        public string Comment;
+        public int Persist;
+        public string Blob;
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        struct NativeCred
+        {
+            public uint Flags;
+            public uint Type;
+            public IntPtr TargetName;
+            public IntPtr Comment;
+            public long LastWritten;
+            public uint BlobSize;
+            public IntPtr Blob;
+            public uint Persist;
+            public uint AttributeCount;
+            public IntPtr Attributes;
+            public IntPtr TargetAlias;
+            public IntPtr UserName;
+        }
+
+        [DllImport("advapi32.dll", EntryPoint = "CredEnumerateW", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern bool CredEnumerate(string filter, int flags, out int count, out IntPtr creds);
+        [DllImport("advapi32.dll", EntryPoint = "CredWriteW", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern bool CredWrite(ref NativeCred cred, int flags);
+        [DllImport("advapi32.dll")]
+        static extern void CredFree(IntPtr p);
+
+        public static Cred[] ReadAll()
+        {
+            List<Cred> res = new List<Cred>();
+            int count;
+            IntPtr list;
+            if (!CredEnumerate(null, 0, out count, out list)) return res.ToArray();
+            try
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    IntPtr item = Marshal.ReadIntPtr(list, i * IntPtr.Size);
+                    NativeCred n = (NativeCred)Marshal.PtrToStructure(item, typeof(NativeCred));
+                    if (n.Type != 1 || n.Persist < 2 || n.Blob == IntPtr.Zero || n.BlobSize == 0) continue;
+                    byte[] b = new byte[n.BlobSize];
+                    Marshal.Copy(n.Blob, b, 0, b.Length);
+                    Cred c = new Cred();
+                    c.Target = Marshal.PtrToStringUni(n.TargetName);
+                    c.User = n.UserName == IntPtr.Zero ? null : Marshal.PtrToStringUni(n.UserName);
+                    c.Comment = n.Comment == IntPtr.Zero ? null : Marshal.PtrToStringUni(n.Comment);
+                    c.Persist = (int)n.Persist;
+                    c.Blob = Convert.ToBase64String(b);
+                    res.Add(c);
+                }
+            }
+            finally { CredFree(list); }
+            return res.ToArray();
+        }
+
+        public static bool Write(string target, string user, string comment, int persist, string blob)
+        {
+            byte[] b = Convert.FromBase64String(blob);
+            NativeCred n = new NativeCred();
+            n.Type = 1;
+            n.Persist = (uint)persist;
+            n.BlobSize = (uint)b.Length;
+            n.TargetName = Marshal.StringToCoTaskMemUni(target);
+            n.UserName = user == null ? IntPtr.Zero : Marshal.StringToCoTaskMemUni(user);
+            n.Comment = comment == null ? IntPtr.Zero : Marshal.StringToCoTaskMemUni(comment);
+            n.Blob = Marshal.AllocCoTaskMem(b.Length);
+            try
+            {
+                Marshal.Copy(b, 0, n.Blob, b.Length);
+                return CredWrite(ref n, 0);
+            }
+            finally
+            {
+                Marshal.FreeCoTaskMem(n.TargetName);
+                Marshal.FreeCoTaskMem(n.UserName);
+                Marshal.FreeCoTaskMem(n.Comment);
+                Marshal.FreeCoTaskMem(n.Blob);
+            }
+        }
+    }
+
     public class RoboJob
     {
         public int Index;
@@ -53,6 +141,7 @@ namespace Hopover
         int next = -1;
         int finished;
         long copied;
+        int running;
         volatile bool cancel;
 
         public readonly ConcurrentQueue<RoboJob> Started = new ConcurrentQueue<RoboJob>();
@@ -69,7 +158,8 @@ namespace Hopover
 
         public long Copied { get { return Interlocked.Read(ref copied); } }
         public int FinishedCount { get { return Thread.VolatileRead(ref finished); } }
-        public bool Finished { get { return FinishedCount >= jobs.Length; } }
+        // Cancel leaves jobs unstarted, so the count alone would never arrive.
+        public bool Finished { get { return FinishedCount >= jobs.Length || (cancel && Thread.VolatileRead(ref running) == 0); } }
 
         public void Start()
         {
@@ -91,12 +181,14 @@ namespace Hopover
                 int i = Interlocked.Increment(ref next);
                 if (i >= jobs.Length) return;
                 RoboJob j = jobs[i];
+                Interlocked.Increment(ref running);
                 Started.Enqueue(j);
                 try { Run(j); }
                 catch (Exception e) { j.ExitCode = 16; Errors.Enqueue(j.Path + ": " + e.Message); }
                 // Done first: a reader that sees Finished must also find the job in Done.
                 Done.Enqueue(j);
                 Interlocked.Increment(ref finished);
+                Interlocked.Decrement(ref running);
             }
         }
 

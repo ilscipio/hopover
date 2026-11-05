@@ -3,16 +3,23 @@
 Moves a Windows PC to a new one over the LAN. Both PCs stay on.
 
 One file: `dist\Hopover.exe` (.NET Framework 4.8, runs on every Windows 10 and 11).
-It moves apps (winget, 1Password/KeePass/OneDrive/SeaDrive first), env vars and PATH,
-the whole user profile (`.ssh`, every dot-folder, `.claude.json`), selected AppData,
-own folders on `C:\` (`C:\java`), other fixed drives, KeePass databases and key files,
-Windows settings (taskbar, Explorer, theme, accent, wallpaper, mouse, keyboard, input,
-notifications, languages, time zone, power plan, Quick Access), app settings in the
-registry (every vendor key under `HKCU\Software`), Wi-Fi, mapped drives, network
-printers, personal certificates, WSL distros, Docker named volumes, scheduled tasks
-(switched off) and the `C:\Seafile` junctions. OneDrive and SeaDrive folders sync after
-sign-in. The checklist lists what no tool can move: sign-ins, saved Windows logins,
-licences, default apps, display scale.
+It moves apps (winget, Chocolatey, Store apps by name, Visual Studio workloads;
+1Password/KeePass/OneDrive/SeaDrive first), programs that no package source has (as a
+folder, with their uninstall entry, registry key and data), env vars and PATH (`%VAR%`
+stays `%VAR%`), the whole user profile (`.ssh`, every dot-folder, `.claude.json`), all of
+AppData except browser profiles and temp data, own folders on `C:\` (`C:\java`), other
+fixed drives, junctions and symbolic links as links, KeePass databases and key files,
+hosts file, Windows features, long paths and Developer Mode, saved logins (git, gh,
+docker tokens), WireGuard tunnels, Windows settings (taskbar, Explorer, theme, accent,
+wallpaper, mouse, keyboard, input, notifications, languages, time zone, power plan,
+Quick Access), app settings in the registry (every vendor key under `HKCU\Software`,
+`HKCU\Software\Classes`, Office and Visual Studio, vendor keys under `HKLM\SOFTWARE`),
+Wi-Fi, mapped drives, network printers, personal certificates, WSL distros, Docker
+named volumes, PostgreSQL, scheduled tasks (switched off) and the `C:\Seafile` junctions.
+Caches (Gradle, npm, uv, pip, Playwright, JetBrains indexes, Steam games) are lines in
+the list: untick what you do not want. OneDrive and SeaDrive folders sync after sign-in.
+The checklist lists what no tool can move: sign-ins, licences, default apps, display
+scale. Docker images come back with a pull; the running Docker disk does not move.
 
 ## Old PC
 
@@ -35,6 +42,31 @@ licences, default apps, display scale.
 
 Closing Hopover is safe. Start it again: done steps and copied chunks are skipped.
 
+## Keep working on the old PC
+
+The old PC can stay in use. After the first move, click **Catch up with the old PC** on
+the new PC, as often as you like. Leave Hopover open on the old PC.
+
+1. The old PC updates its list of folders, apps, env vars, settings, tasks, WSL, Docker
+   volumes and PostgreSQL. The PostgreSQL server stops there for a moment.
+2. The new PC fetches only what changed.
+
+Rules (the new PC never loses work):
+
+- Changed only on the old PC: it updates here.
+- Changed only on the new PC: it stays.
+- Changed on both: the new PC's version stays. The old PC's version goes to
+  `C:\hopover-held\<time>\old-pc-version`.
+- Gone on the old PC: it moves to `C:\hopover-held\<time>\removed-on-old-pc`. Nothing is
+  deleted. A file made on the new PC is never touched.
+- Env var: updates when only the old PC changed it. Otherwise the checklist names it.
+- WSL: changed files come over; a newer file in the new distro stays. Deleted files stay.
+- Docker volume: updates when nobody used it here. PostgreSQL: the data of the new PC
+  stays after the first restore; the archive of the old PC is in the store.
+
+Last step: stop working on the old PC, click **Catch up**, then work only on the new PC.
+Turn off the scheduled tasks on the old PC before you turn them on here.
+
 ## Speed
 
 - **Gentle**: 2 copies at once, idle CPU, low disk priority.
@@ -47,7 +79,8 @@ run in the background while the files copy.
 ## Finish
 
 1. Old PC: click **Stop sharing**.
-2. Delete `C:\hopover-store` on both PCs. It holds Wi-Fi passwords and env values.
+2. Delete `C:\hopover-store` on both PCs. It holds Wi-Fi passwords, env values and saved logins.
+3. Look through `C:\hopover-held`, then delete it.
 
 ## Build
 

@@ -59,6 +59,8 @@ namespace Hopover.Link
                 try { s = listener.AcceptSocket(); } catch { return; }
                 var l = new Local { Sock = s, Stream = new NetworkStream(s, false) };
                 s.NoDelay = true;
+                // One frozen copy process must not hold the only loop that feeds all the others.
+                s.SendTimeout = 60000;
                 new Thread(() => LocalLoop(l)) { IsBackground = true }.Start();
             }
         }

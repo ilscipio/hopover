@@ -241,7 +241,8 @@ namespace Hopover.Link
             if (hs == Hs.WrongCode) return new ConnectResult { Error = "wrong-code" };
             if (ch == null) return new ConnectResult { Error = "no-route", Detail = "handshake " + hs };
             string path = IsPrivate(ep.Address) ? "lan" : "internet";
-            Announce(ch, path);
+            try { Announce(ch, path); }
+            catch (Exception e) { ch.Close(); return new ConnectResult { Error = "no-route", Detail = e.Message }; }
             return new ConnectResult { Channel = ch, Path = path };
         }
 
