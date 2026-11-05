@@ -72,7 +72,7 @@ namespace Hopover.App
         readonly Dictionary<string, CheckBox> newSwitches = new Dictionary<string, CheckBox>();
         readonly Queue<(DateTime At, long Bytes)> rateSamples = new Queue<(DateTime, long)>();
         readonly List<AppRow> installed = new List<AppRow>();
-        bool checkpointShown, previewRun, scanDirty;
+        bool checkpointShown, previewRun, scanDirty, scanMeasuring, prepareQueued;
         System.Windows.Threading.DispatcherTimer scanTimer;
         bool linkLost, needReboot, serveStopping;
         Action dialogCancel;
@@ -406,6 +406,11 @@ namespace Hopover.App
             };
             engine.OnExit = code =>
             {
+                bool queued = prepareQueued;
+                prepareQueued = false;
+                scanMeasuring = false;
+                F<Button>("BtnExport").Content = "Prepare the move";
+                F<Button>("BtnExport").IsEnabled = false;
                 var m = Json.Read(Path.Combine(Store, "manifest.json"));
                 if (code != 0 || m == null)
                 {
@@ -423,6 +428,7 @@ namespace Hopover.App
                 certsOnOldPc = Json.Long(m, "Certs") > 0;
                 F<UIElement>("OldCertPanel").Visibility = certsOnOldPc ? Visibility.Visible : Visibility.Collapsed;
                 F<Button>("BtnExport").IsEnabled = true;
+                if (queued) StartExport();
             };
             engine.Start(engineDir, new[] { "inventory", "-Store", Store, "-Speed", "balanced" });
         }
@@ -436,6 +442,9 @@ namespace Hopover.App
             foreach (var g in groups) g.Measuring = true;
             F<UIElement>("ScanWait").Visibility = Visibility.Collapsed;
             scanDirty = true;
+            // Everything the user decides is on screen now. Only the sizes are still coming.
+            scanMeasuring = true;
+            F<Button>("BtnExport").IsEnabled = true;
             if (scanTimer == null)
             {
                 scanTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
@@ -521,7 +530,14 @@ namespace Hopover.App
 
         void StartExport()
         {
-            if (engine.Running) return;
+            if (engine.Running)
+            {
+                if (!scanMeasuring) return;
+                prepareQueued = true;
+                F<Button>("BtnExport").Content = "Starts when the measuring ends";
+                F<Button>("BtnExport").IsEnabled = false;
+                return;
+            }
             var steps = Checked(oldSwitches);
             string certPw = F<PasswordBox>("OldCertPw").Password;
             if (steps.Contains("certs") && certsOnOldPc && certPw.Length == 0)
