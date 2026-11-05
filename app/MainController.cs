@@ -1026,12 +1026,28 @@ namespace Hopover.App
                 case "DETAIL":
                     SetDetail(importRows, data);
                     break;
+                case "STORE":
+                {
+                    var p = data.Split(new[] { ' ' }, 3);
+                    long bytes = long.Parse(p[0]);
+                    F<TextBlock>("HeroBytes").Text = Fmt.Size(bytes) + " of the prepared data";
+                    F<TextBlock>("HeroItem").Text = p[1] + " files done" + (p.Length > 2 ? "  ·  now " + Path.GetFileName(p[2]) : "");
+                    var now = DateTime.Now;
+                    rateSamples.Enqueue((now, bytes));
+                    while (rateSamples.Count > 2 && (now - rateSamples.Peek().At).TotalSeconds > 20) rateSamples.Dequeue();
+                    var first = rateSamples.Peek();
+                    double secs = (now - first.At).TotalSeconds;
+                    if (secs >= 3) F<TextBlock>("HeroRate").Text = Fmt.Size((bytes - first.Bytes) / secs) + "/s";
+                    AppendLog("Prepared data: " + Fmt.Size(bytes) + ", " + p[1] + " files" + (p.Length > 2 ? ", " + p[2] : ""));
+                    break;
+                }
                 case "STEP":
                     SetStep(importRows, data);
                     if (data == "store start") F<TextBlock>("HeroItem").Text = "Copying the prepared data from the old PC (app list, settings, WSL, Docker volumes)";
                     if (data == "apps done" && !checkpointShown && installed.Count > 0) ShowCheckpoint();
                     if (data == "files start")
                     {
+                        rateSamples.Clear();
                         F<TextBlock>("HeroBytes").Text = "Starting the copy";
                         F<UIElement>("ActivePanel").Visibility = Visibility.Visible;
                     }

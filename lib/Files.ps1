@@ -303,9 +303,26 @@ function Get-LinkExe {
 }
 
 function Invoke-LinkCopy([string[]]$CopyArgs) {
-    # A GUI-subsystem exe returns at once unless its output is piped: Out-Null waits for it.
-    & (Get-LinkExe) --link copy @CopyArgs | Out-Null
-    $LASTEXITCODE
+    # A GUI-subsystem exe returns at once unless its output is piped: the pipe waits for it. Its lines carry the
+    # bytes (tab format of robocopy): every 2 seconds the GUI and the log hear how far it is.
+    $state = @{ Bytes = [int64]0; Files = 0; At = [DateTime]::Now }
+    & (Get-LinkExe) --link copy @CopyArgs | ForEach-Object {
+        $p = "$_".Split("`t")
+        if ($p.Count -ge 4) {
+            $n = [int64]0
+            if ([int64]::TryParse($p[$p.Count - 2].Trim(), [ref]$n)) {
+                $state.Bytes += $n
+                if ($p[1] -match 'New File') { $state.Files++ }
+                if (([DateTime]::Now - $state.At).TotalSeconds -ge 2) {
+                    $state.At = [DateTime]::Now
+                    Send-Event STORE ("{0} {1} {2}" -f $state.Bytes, $state.Files, $p[$p.Count - 1])
+                }
+            }
+        }
+    }
+    $code = $LASTEXITCODE
+    Write-Note ("{0:N1} GB in {1} files" -f ($state.Bytes / 1GB), $state.Files)
+    $code
 }
 
 function ConvertTo-SourcePath([string]$OldPath, [string]$From) {
