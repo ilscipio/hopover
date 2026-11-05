@@ -1,5 +1,7 @@
 # Hopover
 
+☕ **All I ask in return: if your move works, [buy me a coffee](https://buy.stripe.com/28E4gz8pMasZgLv1Snbsc00).** Pay what you want, €5 suggested.
+
 ### Your old PC, on your new PC. Everything, not just your files.
 
 Hopover moves your apps, settings, dev tools and files to a new Windows PC over the network.
@@ -7,7 +9,7 @@ Keep working while it runs. When it finishes, you just carry on.
 
 **[⬇ Download Hopover.exe](https://github.com/madppiper/hopover/releases/latest/download/Hopover.exe)**
 
-Free for personal use · Windows 10 and 11 · One file, nothing to install
+Windows 10 and 11 · One file, nothing to install
 
 ![Hopover shows what will move](docs/screenshot.png)
 
