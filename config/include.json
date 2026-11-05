@@ -3,7 +3,8 @@
 
   "link": { "rendezvous": "http://hop.ilscipio.com", "tcpPort": 47800, "udpPort": 47801 },
 
-  "profileExclude": ["AppData", ".cache", ".thumbnails", ".dbus-keyrings", ".oracle_jre_usage", "seadrive_root", "OneDrive*", "NTUSER*", "ntuser*", "Searches", "IntelGraphicsProfiles", "MicrosoftEdgeBackups"],
+  "_cloud": "Cloud folders sync themselves after sign-in. Windows lists most of them (Get-CloudRoots); these names catch the rest.",
+  "profileExclude": ["AppData", ".cache", ".thumbnails", ".dbus-keyrings", ".oracle_jre_usage", "seadrive_root", "seadrive", "OneDrive*", "Dropbox", "Dropbox (*)", "Google Drive", "My Drive", "iCloudDrive", "iCloud Drive", "Box Sync", "Proton Drive", "pCloudDrive", "pCloud Drive", "Nextcloud", "ownCloud", "MEGA", "Tresorit", "NTUSER*", "ntuser*", "Searches", "IntelGraphicsProfiles", "MicrosoftEdgeBackups"],
 
   "cRootExclude": ["Windows", "Program Files", "Program Files (x86)", "ProgramData", "Users", "Recovery", "PerfLogs", "System Volume Information", "$Recycle.Bin", "$WinREAgent", "$SysReset", "$Windows.~BT", "$Windows.~WS", "Config.Msi", "Documents and Settings", "Dokumente und Einstellungen", "Programme", "MSOCache", "OneDriveTemp", "Intel", "AMD", "NVIDIA", "ESD", "inetpub", "Seafile", "hopover-store", "hopover-held", "*.sys", "DumpStack.log*", "bootTel.dat", "appverifUI.dll", "vfcompat.dll"],
 
@@ -68,6 +69,7 @@
   "appSearchSkip": "Driver|Chipset|^NVIDIA|^AMD|^Realtek|^Genesys|^Silicon Lab|^Control Center|^Microsoft |^Windows |Local Experience|Video Extension|Image Extension|^Ink\\.|^KYOCERA|vs_|Visual C\\+\\+|^GamingCenter|^Sound Blaster|^OneDrive$|^Paint$|^Snipping Tool$|^XBOX$|^Get Help$|^Mobile Plans$|^MSN Weather$|^Solitaire|^Start Experiences|^Store Experience|^Power Automate$|^OfficePush|^Mixed Reality|^Blackmagic RAW|^WinAppRuntime|^Widgets Platform|^Xbox |^Game Bar|^Game Speech|^Films & TV$|^Mail and Calendar$|^Phone Link$|^Feedback Hub$|^Dev Home$|^Quick Assist$|^Mobile devices$|^Local AI Manager|^Web Media Extensions$|^Notepad\\+\\+$|^Python$|^Ruby$|^WinRAR$|^Rockstar Games Social Club|^Steinberg Download Assistant",
 
   "otherDrives": "all-fixed",
+  "cloudDriveLabels": "Google Drive|My Drive|GoogleDrive|pCloud|Dropbox|^Box$|Proton|iCloud",
 
   "skipUnder": ["%OneDrive%", "%OneDriveCommercial%", "%OneDriveConsumer%", "%USERPROFILE%\\seadrive_root", "C:\\Seafile"],
 

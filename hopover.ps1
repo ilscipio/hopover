@@ -139,6 +139,7 @@ function Invoke-Inventory {
         Profile    = $env:USERPROFILE
         Created    = (Get-Date).ToString('s')
         OneDrive   = @($env:OneDrive, $env:OneDriveCommercial, $env:OneDriveConsumer | Where-Object { $_ } | Sort-Object -Unique)
+        CloudRoots = @(Get-CloudRoots)
         Plan       = $plan
         Excludes   = @(Get-RobocopyExcludes $Config)
         Junctions  = @(Get-Junctions)

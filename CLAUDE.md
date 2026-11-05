@@ -143,7 +143,7 @@ User steps: `README.md`.
 - Nothing may delete data on either PC. One exception, only on a user's click: `cleanup -Purge` deletes `C:\hopover-store` (Hopover's own working copy). `C:\hopover-held` stays. Imported tasks arrive switched off.
 - `C:\hopover-store` holds Wi-Fi keys, env tokens and .pfx files: ACL-locked, never in
   OneDrive or git.
-- OneDrive and SeaDrive folders are never copied; they sync after sign-in.
+- Cloud folders are never copied; they sync after sign-in. `Get-CloudRoots` reads Windows' SyncRootManager list; `profileExclude` names and `cloudDriveLabels` catch the rest (Google Drive looks like a fixed disk).
 - No DPI, monitor or hardware registry keys (`Control Panel\Desktop` only by value).
 
 ## Paul's machine facts

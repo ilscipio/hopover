@@ -14,9 +14,20 @@ function Get-SpeedProfile([string]$Speed) {
     }
 }
 
+function Get-CloudRoots {
+    # Every client that uses the Windows cloud API (OneDrive, SeaDrive, Box, Dropbox, Google Drive, ...) registers its folder here.
+    if ($null -ne $script:CloudRoots) { return $script:CloudRoots }
+    $key = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\SyncRootManager'
+    $script:CloudRoots = @(Get-ChildItem $key -ErrorAction SilentlyContinue | ForEach-Object {
+        $u = Join-Path $_.PSPath 'UserSyncRoots'
+        if (Test-Path $u) { $i = Get-Item $u; foreach ($n in $i.Property) { "$($i.GetValue($n))".TrimEnd('\') } }
+    } | Where-Object { $_ -match '^[A-Za-z]:' } | Sort-Object -Unique)
+    $script:CloudRoots
+}
+
 function Get-CopyPlan($Config) {
     $profileDir = $env:USERPROFILE
-    $skip = @($Config.skipUnder | ForEach-Object { Expand-PathVars $_ } | Where-Object { $_ })
+    $skip = @($Config.skipUnder | ForEach-Object { Expand-PathVars $_ } | Where-Object { $_ }) + @(Get-CloudRoots)
     $items = New-Object System.Collections.Generic.List[object]
     $add = {
         param([string]$Path, [string]$Why)
@@ -51,7 +62,8 @@ function Get-CopyPlan($Config) {
 
     # 4. Every other fixed drive, whole.
     if ($Config.otherDrives -eq 'all-fixed') {
-        Get-Volume | Where-Object { $_.DriveType -eq 'Fixed' -and $_.DriveLetter -and $_.DriveLetter -ne 'C' } |
+        # A cloud drive looks like a normal fixed disk (Google Drive on G:), and it has no end.
+        Get-Volume | Where-Object { $_.DriveType -eq 'Fixed' -and $_.DriveLetter -and $_.DriveLetter -ne 'C' -and $_.FileSystemLabel -notmatch $Config.cloudDriveLabels } |
             ForEach-Object { & $add "$($_.DriveLetter):\" 'drive' }
     }
 
@@ -187,7 +199,7 @@ function Get-Junctions {
 
 function Get-RobocopyExcludes($Config) {
     $xd = @($Config.excludeDirs | ForEach-Object { if ($_ -match '%') { Expand-PathVars $_ } else { $_ } } | Where-Object { $_ })
-    $xd += @($Config.skipUnder | ForEach-Object { Expand-PathVars $_ } | Where-Object { $_ })
+    $xd += @($Config.skipUnder | ForEach-Object { Expand-PathVars $_ } | Where-Object { $_ }) + @(Get-CloudRoots)
     # Caches are chunks of their own: every other chunk leaves them out, whether or not the user wants them.
     $xd += @($Config.caches | ForEach-Object { Expand-PathVars $_ } | Where-Object { $_ })
     $list = @()

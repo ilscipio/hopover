@@ -21,6 +21,11 @@ function Write-Checklist([string]$Store, $Manifest, [hashtable]$Notes) {
     }
     $L.Add('- [ ] OneDrive: sign in to each account. Wait for the first sync before you open the files:')
     foreach ($o in $Manifest.OneDrive) { $L.Add("  - ``$o``") }
+    $others = @($Manifest.CloudRoots | Where-Object { $_ -and -not (Test-UnderAny $_ @($Manifest.OneDrive)) })
+    if ($others) {
+        $L.Add('- [ ] Other cloud folders sync after you sign in to their app. Hopover does not copy them:')
+        foreach ($o in $others) { $L.Add("  - ``$o``") }
+    }
     if ($s.ShellFolders) {
         $kfm = $s.ShellFolders.PSObject.Properties | Where-Object { $_.Value -and (Test-UnderAny ([Environment]::ExpandEnvironmentVariables($_.Value)) $Manifest.OneDrive) }
         if ($kfm) { $L.Add("- [ ] OneDrive: Settings > Sync and back up > Manage back up: turn on $(($kfm.Name -join ', ')) (the old PC kept them in OneDrive).") }

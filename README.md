@@ -81,6 +81,7 @@ So I built it. It's young - my own move is its first big test - so keep a backup
 
 - The exe isn't signed yet, so a browser download makes Windows warn you once. Click **More info**, then **Run anyway**. winget skips that warning.
 - Docker images come back with your next pull. Browser profiles and OneDrive sync after you sign in.
+- OneDrive, SeaDrive, Google Drive, Dropbox and other cloud folders stay out of the move. They sync by themselves after you sign in.
 - Epic, GOG, EA and Ubisoft games download again.
 - When you're done, click **Clean up** on both PCs, or say yes when you close Hopover. That removes its working folder with your Wi-Fi passwords and tokens. Your own files stay.
 
