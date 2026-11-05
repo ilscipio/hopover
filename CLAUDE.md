@@ -113,7 +113,7 @@ User steps: `README.md`.
 - Tests: `Hopover.exe --link selftest`; `tests\link-test.ps1` (a few GB through the real engine path, loopback and
   LAN IP, kill and resume); `tests\sync-test.ps1` (catch-up rules, links, locked files; loopback, safe to run);
   `tests\punch-test.ps1` (hole punch code path on loopback only: real NAT traversal untested).
-- Events: `##LINK code|path|peer|state`.
+- Events: `##LINK code|path|peer|state|rate`. `rate bytesPerSecond total path` every 2 s: the old PC shows that files leave.
 
 ## Files
 

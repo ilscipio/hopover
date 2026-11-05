@@ -441,7 +441,7 @@
                   <TextBlock x:Name="ShareWhere" Style="{StaticResource Dim}" Margin="0,6,0,0"/>
                 </StackPanel>
                 <Border Grid.Column="1" BorderBrush="{StaticResource Ink}" BorderThickness="3" Padding="12,0" VerticalAlignment="Top" Margin="20,0,0,0">
-                  <TextBlock Text="DELIVERED" FontFamily="{StaticResource MonoSemi}" FontSize="13"/>
+                  <TextBlock x:Name="ShareStamp" Text="READY" FontFamily="{StaticResource MonoSemi}" FontSize="13"/>
                 </Border>
               </Grid>
               <Border BorderBrush="{StaticResource Ink}" BorderThickness="0,2,0,0" Padding="0,10,0,0" Margin="0,22,0,0">
@@ -459,6 +459,8 @@
                 </Border>
                 <TextBlock x:Name="LinkPeer" Style="{StaticResource Dim}" VerticalAlignment="Center" Margin="14,0,0,0"/>
               </StackPanel>
+              <TextBlock x:Name="LinkRate" Visibility="Collapsed" FontFamily="{StaticResource Display}" FontSize="20" Margin="0,14,0,0"/>
+              <TextBlock x:Name="LinkFile" Visibility="Collapsed" Style="{StaticResource Eyebrow}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
               <TextBlock Style="{StaticResource Dim}" Margin="0,18,0,0" Text="Leave this PC on until the new PC says Done. The code works for one try: a wrong guess makes a new code. No Windows password is needed. Files travel straight between the two PCs, encrypted."/>
               <Button x:Name="BtnStopShare" Content="Stop the link (after the move)" HorizontalAlignment="Left" Margin="0,18,0,0"/>
             </StackPanel>

@@ -648,6 +648,20 @@ namespace Hopover.App
                 case "path":
                     SetLinkBadge(PathText(rest), rest != "none");
                     break;
+                case "rate":
+                {
+                    var r = rest.Split(new[] { ' ' }, 3);
+                    long speed = long.Parse(r[0]), total = long.Parse(r[1]);
+                    string text = speed > 0 ? "Sending " + Fmt.Size(speed) + "/s  ·  " + Fmt.Size(total) + " sent so far" : "Connected, nothing to send right now  ·  " + Fmt.Size(total) + " sent so far";
+                    F<TextBlock>("LinkRate").Text = text;
+                    F<TextBlock>("LinkFile").Text = speed > 0 && r.Length > 2 ? r[2] : "";
+                    F<TextBlock>("ShareStamp").Text = speed > 0 ? "SENDING" : "READY";
+                    F<UIElement>("LinkRate").Visibility = Visibility.Visible;
+                    F<UIElement>("LinkFile").Visibility = Visibility.Visible;
+                    if (speed > 0) ShowScanCode(null, text);
+                    if (currentPage == "PageExport") SetRoute(lastFrac, speed > 0 ? "SENDING  ·  " + Fmt.Size(speed) + "/s" : "LINK OPEN");
+                    break;
+                }
                 case "peer":
                     F<TextBlock>("LinkPeer").Text = "Connected: " + rest;
                     ShowScanCode(null, "Connected: " + rest + ". It waits for this PC.");
@@ -1489,8 +1503,9 @@ namespace Hopover.App
                     exportRows[3].State = "skipped";
                     ApplyShare("", false);
                     F<TextBlock>("LinkCode").Text = "3-alpha-bravo-cafe";
-                    SetLinkBadge(PathText("lan"), true);
+                    SetLinkBadge(PathText("cable"), true);
                     F<TextBlock>("LinkPeer").Text = "Connected: NEWPC-2026";
+                    OnLinkEvent(@"rate 203400000 412000000000 C:\java\workspace\slaides\core\dist\bundle.js");
                     F<TextBlock>("ExportTitle").Text = "This PC is ready";
                     ShowPage("PageExport", "Old PC");
                     SetRoute(1, "READY  ·  LINK OPEN");

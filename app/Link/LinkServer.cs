@@ -103,6 +103,7 @@ namespace Hopover.Link
             tcp.Start();
             TcpPort = ((IPEndPoint)tcp.LocalEndpoint).Port;
             for (int i = 0; i < 8; i++) new Thread(Worker) { IsBackground = true }.Start();
+            new Thread(RateLoop) { IsBackground = true }.Start();
             new Thread(AcceptLoop) { IsBackground = true }.Start();
             new Thread(UdpLoop) { IsBackground = true }.Start();
             if (!string.IsNullOrEmpty(o.Rendezvous)) new Thread(RendezvousLoop) { IsBackground = true }.Start();
@@ -466,8 +467,29 @@ namespace Hopover.Link
             finally { Interlocked.Exchange(ref refreshing, 0); }
         }
 
+        long sentBytes;
+        volatile string sentFile;
+
+        /// <summary>The old PC's window shows that files really leave: "##LINK rate bytesPerSecond totalBytes path" every 2 seconds.</summary>
+        void RateLoop()
+        {
+            long last = 0;
+            bool idle = true;
+            while (!stopped)
+            {
+                Thread.Sleep(2000);
+                long now = Interlocked.Read(ref sentBytes);
+                long rate = (now - last) / 2;
+                last = now;
+                if (rate == 0 && idle) continue;
+                idle = rate == 0;
+                o.Event("##LINK rate " + rate + " " + now + " " + (sentFile ?? ""));
+            }
+        }
+
         void Read(Channel ch, string tag, uint sid, string file, long off, long len)
         {
+            sentFile = file;
             using (var fs = new FileStream(Lp(file), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1 << 16, FileOptions.SequentialScan))
             {
                 if (off > fs.Length) off = fs.Length;
@@ -481,6 +503,7 @@ namespace Hopover.Link
                     int got = fs.Read(buf, 4, want);
                     if (got <= 0) break;
                     ch.Send(Msg.Data, buf, 0, 4 + got);
+                    Interlocked.Add(ref sentBytes, got);
                     len -= got;
                 }
             }
