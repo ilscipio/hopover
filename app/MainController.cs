@@ -345,6 +345,14 @@ namespace Hopover.App
         {
             ShowPage("PageScan", "Old PC");
             if (engine.Running) return;
+            // The link opens first: the new PC can connect now and waits there, not in front of a blank screen.
+            engine.OnEvent = (k, d) => { if (k == "SHARE" && (serve == null || !serve.Running)) StartServe(); };
+            engine.OnExit = code => BeginScan();
+            engine.Start(engineDir, new[] { "share", "-Store", Store }, new Dictionary<string, string> { ["HOPOVER_EXE"] = exePath });
+        }
+
+        void BeginScan()
+        {
             oldSwitches.Clear();
             foreach (var kv in BuildSwitches("OldSteps", ExportSteps.Select(s => s.Key), new string[0])) oldSwitches[kv.Key] = kv.Value;
             groups.Clear();
@@ -573,6 +581,7 @@ namespace Hopover.App
             {
                 case "code":
                     F<TextBlock>("LinkCode").Text = rest;
+                    ShowScanCode("Pairing code for the new PC:  " + rest);
                     SetLinkBadge("WAITING FOR THE NEW PC", false);
                     F<TextBlock>("LinkPeer").Text = "";
                     break;
@@ -581,6 +590,7 @@ namespace Hopover.App
                     break;
                 case "peer":
                     F<TextBlock>("LinkPeer").Text = "Connected: " + rest;
+                    ShowScanCode("Connected to " + rest + ". It waits until this PC is ready.");
                     break;
                 case "state":
                     if (rest == "burned")
@@ -591,6 +601,13 @@ namespace Hopover.App
                     else if (rest == "dropped") SetLinkBadge("LINK DROPPED  ·  WAITING AGAIN", false);
                     break;
             }
+        }
+
+        void ShowScanCode(string text)
+        {
+            var t = F<TextBlock>("ScanCode");
+            t.Text = text;
+            t.Visibility = Visibility.Visible;
         }
 
         static string PathText(string path) =>
@@ -659,6 +676,8 @@ namespace Hopover.App
         }
 
         // ---------- NEW PC ----------
+        sealed class PreparedData { public object Manifest, Apps, Tasks; public bool Certs; }
+
         string LinkRendezvous()
         {
             var link = Json.Get(Json.Read(Path.Combine(engineDir ?? "", "config", "include.json")), "link");
@@ -730,13 +749,29 @@ namespace Hopover.App
             F<UIElement>("ConnectBadge").Visibility = Visibility.Visible;
             SetConnectMsg("Connected. Reading what the old PC prepared", false);
             var mux = guiMux = MuxClient.Connect(proxy.Port, proxy.Token);
-            var got = await Task.Run(() =>
+            Func<PreparedData> load = () =>
             {
                 Func<string, object> read = rel => { try { return Json.Parse(mux.ReadAllBytes("store", rel)); } catch (Exception) { return null; } };
                 bool certs = false;
                 try { certs = mux.List("store", "certs").Any(e => e.Name.EndsWith(".pfx", StringComparison.OrdinalIgnoreCase)); } catch (Exception) { }
-                return new { Manifest = read("manifest.json"), Apps = read(@"apps\winget.json"), Tasks = read(@"tasks\tasks.json"), Certs = certs };
-            });
+                return new PreparedData { Manifest = read("manifest.json"), Apps = read(@"apps\winget.json"), Tasks = read(@"tasks\tasks.json"), Certs = certs };
+            };
+            var got = await Task.Run(load);
+            // The old PC opens the link before it scans. Stay connected until it has finished preparing.
+            Func<bool> ready = () => { try { return mux.Stat("store", "ready.json") != null; } catch (Exception) { return false; } };
+            bool isReady = await Task.Run(ready);
+            if (!isReady)
+            {
+                SetConnectMsg("Connected. The old PC is still preparing: tick what moves there and click 'Prepare the move'. This page goes on by itself.", false);
+                while (!isReady)
+                {
+                    await Task.Delay(5000);
+                    if (proxy != myProxy || linkLost) return;
+                    isReady = await Task.Run(ready);
+                }
+                SetConnectMsg("The old PC is ready. Reading what it prepared", false);
+                got = await Task.Run(load);
+            }
             var m = got.Manifest;
             if (m == null)
             {

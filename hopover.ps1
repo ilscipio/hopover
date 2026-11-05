@@ -99,6 +99,8 @@ function Get-CertPassword([string]$Prompt) {
 
 function Invoke-Inventory {
     Write-Step 'Inventory'
+    # ready.json = the store is complete. A new scan means it is not, until export ends. The new PC waits for this file.
+    if (-not $Refresh) { Remove-Item "$Store\ready.json" -ErrorAction SilentlyContinue }
     Send-Event STEP 'inventory start'
     $plan = @(Get-CopyPlan $Config)
     # A refresh runs while the user works on this PC: the sizes of the last scan are good enough.
@@ -292,6 +294,7 @@ function Invoke-Export {
     Assert-Admin
     # Export only reads and shares; a dry run would still stop WSL and open shares.
     if ($WhatIf) { throw 'export has no dry run. Run inventory to see what would move.' }
+    if (-not $Refresh) { Remove-Item "$Store\ready.json" -ErrorAction SilentlyContinue }
     if ($Refresh) { $null = Invoke-Inventory }
     $m = Get-ExportManifest
     Invoke-Phase 'apps'     'Apps'                  { Export-Apps $Store $Config }
@@ -314,6 +317,7 @@ function Invoke-Export {
     Write-Step 'Copy the tool into the store'
     Publish-Tool
     Write-Checklist $Store $m @{} | Out-Null
+    Write-Json ([pscustomobject]@{ Time = (Get-Date).ToString('s') }) "$Store\ready.json"
     Invoke-Share
 }
 

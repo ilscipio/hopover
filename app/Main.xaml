@@ -296,6 +296,7 @@
             <TextBlock x:Name="ScanSub" Style="{StaticResource Dim}" Text="Hopover measures every folder first. On a big disk this takes some minutes; the PC stays usable."/>
             <ProgressBar x:Name="ScanBar" Margin="0,14,0,6"/>
             <TextBlock x:Name="ScanText" Style="{StaticResource Eyebrow}" TextTrimming="CharacterEllipsis"/>
+            <TextBlock x:Name="ScanCode" Visibility="Collapsed" FontFamily="{StaticResource MonoSemi}" FontSize="14" Foreground="{StaticResource Ink}" Margin="0,8,0,0" TextTrimming="CharacterEllipsis"/>
           </StackPanel>
           <Grid Grid.Row="1">
             <Grid.RowDefinitions>

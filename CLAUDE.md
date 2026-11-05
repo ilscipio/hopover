@@ -69,6 +69,8 @@ User steps: `README.md`.
 - Old PC: `inventory` builds the plan and measures it in parallel (`robocopy /L` in the
   C# pool) -> `C:\hopover-store\manifest.json`. Big trees are split into chunks
   (`chunkDepth` per kind; a `files` chunk = the files directly in a folder, no `/E`).
+  The link opens before the scan (`share`, then `--link serve`): the code shows on the scan page and the new PC can connect early.
+  It waits for `ready.json`, written at the end of `export`, removed by a new scan.
   The list reaches the GUI before the measuring (`plan-partial.json`, `##PLANREADY`); sizes follow per chunk (`##SIZE bytes files group`).
   The scan runs one worker per core (at least 8), below-normal CPU, normal disk priority (`Native.Lower` "scan").
   `Group` = the top-level folder; the GUI shows groups, `deselected.json` drops groups.
