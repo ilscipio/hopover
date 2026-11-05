@@ -1332,7 +1332,8 @@ namespace Hopover.App
             return startLinks
                 .Where(l => { string n = Path.GetFileNameWithoutExtension(l); return !n.ToLowerInvariant().Contains("uninstall"); })
                 .Select(l => new { l, k = NonWord.Replace(Path.GetFileNameWithoutExtension(l), "").ToLowerInvariant() })
-                .Where(x => x.k.Length >= 3 && (x.k.Contains(key) || key.Contains(x.k)))
+                // Whole start of the name only: "1Password" holds "word", and that must not open Word.
+                .Where(x => x.k.Length >= 3 && (x.k.Contains(key) || (x.k.Length >= 5 && key.StartsWith(x.k))))
                 .OrderBy(x => Math.Abs(x.k.Length - key.Length)).Select(x => x.l).FirstOrDefault();
         }
 
