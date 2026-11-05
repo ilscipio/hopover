@@ -1,6 +1,6 @@
 # Builds Hopover.exe on every change that reaches it, runs the link selftest and publishes the exe as a release.
 # The repo on GitHub is a mirror of GitLab: change the code there. Stable link:
-# https://github.com/madppiper/hopover/releases/latest/download/Hopover.exe
+# https://github.com/ilscipio/hopover/releases/latest/download/Hopover.exe
 name: Release the exe
 
 on:

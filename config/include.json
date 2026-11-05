@@ -85,7 +85,17 @@
     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Taskband",
     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Ribbon",
     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VisualEffects",
-    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Wallpapers",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\AutoplayHandlers",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Shell Folders\\NOT-USED",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Privacy",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\AdvertisingInfo",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Feeds",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\GameDVR",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\StorageSense",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\CloudStore\\Store\\DefaultAccount\\Current\\default$windows.data.bluelightreduction.settings",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\CloudStore\\Store\\DefaultAccount\\Current\\default$windows.data.bluelightreduction.bluelightreductionstate",
     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Search",
     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\SearchSettings",
     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Notifications\\Settings",
@@ -103,6 +113,8 @@
     "HKCU\\Software\\Microsoft\\Clipboard",
     "HKCU\\Software\\Microsoft\\Terminal Server Client",
     "HKCU\\Software\\Microsoft\\Notepad",
+    "HKCU\\Software\\Microsoft\\GameBar",
+    "HKCU\\Software\\Microsoft\\Speech_OneCore\\Settings",
     "HKCU\\Software\\Microsoft\\Command Processor",
     "HKCU\\Software\\Microsoft\\PowerShell",
     "HKCU\\Software\\Microsoft\\Spelling",
@@ -124,6 +136,9 @@
     "HKCU\\Control Panel\\Cursors",
     "HKCU\\Control Panel\\Colors",
     "HKCU\\Control Panel\\Accessibility",
+    "HKCU\\Control Panel\\Input Method",
+    "HKCU\\Control Panel\\Sound",
+    "HKCU\\AppEvents",
     "HKCU\\Console",
     "HKCU\\Keyboard Layout\\Preload",
     "HKCU\\Keyboard Layout\\Substitutes"
@@ -134,12 +149,14 @@
 
   "_registryValues": "Single values from keys that also hold PC-specific data (DPI, monitors).",
   "registryValues": {
-    "HKCU\\Control Panel\\Desktop": ["Wallpaper", "WallpaperStyle", "TileWallpaper", "MenuShowDelay", "CursorBlinkRate", "DragFullWindows", "FontSmoothing", "FontSmoothingType"]
+    "HKCU\\Control Panel\\Desktop": ["Wallpaper", "WallpaperStyle", "TileWallpaper", "AutoColorization", "WheelScrollLines", "WheelScrollChars", "MenuShowDelay", "CursorBlinkRate", "DragFullWindows", "FontSmoothing", "FontSmoothingType"]
   },
 
   "_registryMachineValues": "Machine switches that a developer PC needs: long paths, Developer Mode.",
   "registryMachineValues": {
     "HKLM\\SYSTEM\\CurrentControlSet\\Control\\FileSystem": ["LongPathsEnabled"],
+    "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Keyboard Layout": ["Scancode Map"],
+    "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Sudo": ["Enabled"],
     "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\AppModelUnlock": ["AllowDevelopmentWithoutDevLicense", "AllowAllTrustedApps"]
   },
 

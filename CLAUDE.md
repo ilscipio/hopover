@@ -40,9 +40,9 @@ User steps: `README.md`.
 
 ## Publishing (2026-11-05)
 
-- GitLab (`ilscipio/projects/hopover`) is the source. GitHub `madppiper/hopover` (public) is a mirror of it: change code on GitLab only.
+- GitLab (`ilscipio/projects/hopover`) is the source. GitHub `ilscipio/hopover` (public) is a mirror of it: change code on GitLab only.
 - `.github/workflows/release.yml` on GitHub: on a push that touches app, engine or config, it builds on `windows-2022`, runs the
-  selftest and publishes a release. Stable link: `https://github.com/madppiper/hopover/releases/latest/download/Hopover.exe`.
+  selftest and publishes a release. Stable link: `https://github.com/ilscipio/hopover/releases/latest/download/Hopover.exe`.
 - `.gitlab-ci.yml` deploys only the meeting point (`rendezvous\`). `dist\Hopover.exe` in git is a local build; the release is built new.
 - The exe is unsigned: SmartScreen warns. This repo is public, history included: no secrets in files, ever.
 

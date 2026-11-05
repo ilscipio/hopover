@@ -392,6 +392,10 @@ function Export-Settings([string]$Store, $Config) {
     $win = [pscustomobject]@{
         Values    = [pscustomobject]$values
         Languages = @(Get-WinUserLanguageList | ForEach-Object { $_.LanguageTag })
+        Culture   = (Get-Culture).Name
+        GeoId     = (Get-WinHomeLocation).GeoId
+        UiLanguage = "$((Get-WinUILanguageOverride).Name)"
+        Computer  = $env:COMPUTERNAME
         TimeZone  = (Get-TimeZone).Id
         Power     = $(((powercfg /getactivescheme) -join ' ') -replace '.*?([0-9a-f]{8}-[0-9a-f-]{27}).*', '$1')
     }
@@ -515,6 +519,24 @@ function Import-WindowsSettings([string]$Dir, [string]$OldProfile, [switch]$What
             $missing = @($w.Languages | Where-Object { $have -notcontains $_ })
             foreach ($l in $missing) { $list.Add($l) }
             if ($missing) { Set-WinUserLanguageList $list -Force -ErrorAction SilentlyContinue }
+        }
+    }
+    # Region and display language. A pack this Windows lacks is a checklist line, no failure.
+    if ($w.Culture -and (Get-Culture).Name -ne $w.Culture) {
+        Write-Note "regional format: $($w.Culture)"
+        if (-not $WhatIf) { Set-Culture $w.Culture -ErrorAction SilentlyContinue }
+    }
+    if ($w.GeoId -and (Get-WinHomeLocation).GeoId -ne $w.GeoId) {
+        Write-Note "home location: $($w.GeoId)"
+        if (-not $WhatIf) { Set-WinHomeLocation -GeoId $w.GeoId -ErrorAction SilentlyContinue }
+    }
+    if ($w.UiLanguage -and "$((Get-WinUILanguageOverride).Name)" -ne $w.UiLanguage) {
+        Write-Note "display language: $($w.UiLanguage)"
+        if (-not $WhatIf) {
+            try {
+                if (Get-Command Install-Language -ErrorAction SilentlyContinue) { Install-Language $w.UiLanguage -ErrorAction Stop | Out-Null }
+                Set-WinUILanguageOverride -Language $w.UiLanguage -ErrorAction Stop
+            } catch { Write-Warn "display language $($w.UiLanguage): $($_.Exception.Message)" }
         }
     }
     if ($w.TimeZone -and (Get-TimeZone).Id -ne $w.TimeZone) {

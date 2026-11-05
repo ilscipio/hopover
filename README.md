@@ -1,45 +1,51 @@
-<h1 align="center">Free to move. Pay on delivery.</h1>
+<h1 align="center">Windows to Windows Migration</h1>
+
+<p align="center"><img src="docs/welcome.png" alt="Hopover: Move to your new PC. All of it." width="860"></p>
 
 <p align="center">
-  <b>Your move costs nothing.</b> If it works, I want a <a href="https://buy.stripe.com/28E4gz8pMasZgLv1Snbsc00">☕ coffee</a>, or a <a href="https://github.com/madppiper/hopover/issues/new?title=My%20move%20with%20Hopover">✍️ review</a> and a <a href="https://github.com/madppiper/hopover">⭐ star</a>.<br>
-  If it fails, you owe me nothing. <a href="https://github.com/madppiper/hopover/issues/new">Open a ticket</a> and I'll fix it.
+  Hopover moves your whole PC to a new one - apps, settings, WSL, SSH keys, files.<br>
+  Straight over your own network, while you keep working.
 </p>
 
 <p align="center">
-  <a href="https://github.com/madppiper/hopover/releases/latest/download/Hopover.exe"><img src="https://img.shields.io/badge/Download-Hopover.exe-ff5a1f?style=for-the-badge&logo=windows&logoColor=white" alt="Download Hopover.exe" height="44"></a>
+  <a href="https://github.com/ilscipio/hopover/releases/latest/download/Hopover.exe"><img src="https://img.shields.io/badge/Download-Hopover.exe-ff5a1f?style=for-the-badge&logo=windows&logoColor=white" alt="Download Hopover.exe" height="44"></a>
 </p>
 
-<p align="center">Windows 10 and 11 · One file · Nothing to install · No account</p>
+<p align="center">
+  Free to move, pay on delivery. If it works, I want a <a href="https://buy.stripe.com/28E4gz8pMasZgLv1Snbsc00">coffee</a>, or a <a href="https://github.com/ilscipio/hopover/issues/new?title=My%20move%20with%20Hopover">review</a> and a <a href="https://github.com/ilscipio/hopover">star</a>.<br>
+  If it fails, you owe me nothing. <a href="https://github.com/ilscipio/hopover/issues/new">Open a ticket</a> and I'll fix it :)
+</p>
 
-<p align="center"><img src="docs/welcome.png" alt="Hopover: Move to your new PC. All of it." width="820"></p>
+<p align="center">
+  <sub>Windows 10 and 11 - one file, nothing to install, no account - <a href="https://www.ilscipio.com/en/apps/hopover/">website and docs</a> - <a href="https://www.ilscipio.com/apps/hopover/">auf Deutsch</a></sub>
+</p>
 
-## Move to your new PC. All of it.
+&nbsp;
 
-A new PC should feel like a treat. Instead you lose a weekend: reinstalling apps, hunting for SSH keys, rebuilding WSL, fixing your PATH, and finding out three weeks later what you forgot.
+## What it does
 
-**Hopover moves your whole PC to the new one.** Your apps, your settings, your dev setup and your files, straight over your network. You keep working while it runs. When it's done, you sit down at the new PC and carry on where you stopped.
+- **Your apps** come back through winget, Chocolatey and the Store. No installer left? The program moves as a folder.
+- **Your dev setup** moves too - WSL, Docker volumes, PostgreSQL, env vars, PATH, SSH keys, git logins, scheduled tasks.
+- **Your Windows settings** come along, and I care a lot about those - taskbar, Start pins, wallpaper, theme, desktop layout, Explorer, sounds, night light, mouse, keyboard, languages, region, power plan, notifications, privacy, Wi-Fi, hosts file, Windows features.
+- **Your app settings** arrive with all of AppData and the registry entries that go with it.
+- **Your files** come over, big repos, junctions and symlinks included.
+- **Your caches** too, if you want them. Gradle, npm, Playwright, IDE indexes. Each one is a tick in the list.
 
-> *Hi, Paul here. I built Hopover because no tool would move my whole dev PC: WSL, SSH keys, env vars and all. So go ahead and use it. Every feature, no trial, no locked buttons.*
+And the part I care about most: your old PC stays in use. Keep working during the move, then click **Catch up** to fetch what changed. If a file changed on both PCs, the new one keeps its version and the other waits for you in `C:\hopover-held`. Nothing gets thrown away.
 
-## What's in the truck
+Nervous? Switch on **Preview first** and you get a text file of everything Hopover would do. Your files go directly from PC to PC, encrypted. No cloud in between.
 
-- 📦 **Your apps.** Reinstalled through winget, Chocolatey and the Store, with Visual Studio workloads. No installer left? The program moves as a folder.
-- 🐧 **Your dev setup.** WSL distros, Docker volumes, PostgreSQL, env vars and PATH, SSH keys, saved git logins, npm and pip tools, scheduled tasks.
-- ⚙️ **Your Windows.** Taskbar, wallpaper, theme, Explorer, desktop layout, mouse, keyboard, languages, Wi-Fi, hosts file, Windows features.
-- 🗝️ **Your app settings.** All of AppData and the registry entries that go with it, so your apps still know you.
-- 📁 **Your files.** Your profile, your folders, your other drives. Half a terabyte of repos is no problem, and neither are junctions and symlinks.
-- 🚀 **Your caches, if you want them.** Gradle, npm, uv, Playwright, IDE indexes. Tick them and skip the big download.
+<p align="center"><img src="docs/what-moves.png" alt="The list of what moves" width="860"></p>
 
-<p align="center"><img src="docs/what-moves.png" alt="Choose what moves" width="820"><br><sub>Everything is on the manifest. Untick what stays behind.</sub></p>
+## How to move
 
-## Why it's different
+**On your old PC:** start Hopover and click **This is the old PC**. Untick what stays behind, click **Prepare the move** and note the pairing code.
 
-- 🔄 **Your old PC stays in use.** Work as usual during the move. One click on **Catch up** fetches what changed since.
-- 🛟 **Nothing gets thrown away.** Changed on both PCs? Your new PC keeps its version, and the other one waits for you in `C:\hopover-held`.
-- 👀 **Look before you leap.** **Preview first** writes everything Hopover would do to a text file. Read it, then decide.
-- 🔒 **Your data stays yours.** A pairing code opens a direct, encrypted link between your two PCs. No cloud. No server ever sees a file.
-- ⏯️ **Stop any time.** Close Hopover, shut the lid, come back tomorrow. It picks up where it stopped.
-- 🧪 **Test drive included.** Halfway through, Hopover lets you open your apps and check that they still remember you.
+**On your new PC:** start Hopover and click **This is the new PC**. Type the code and click **Start the move**. Go get a coffee.
+
+**When you're ready to switch:** click **Catch up with the old PC** one last time and work through the short checklist. You sign in to your browser and your password manager, sign out of Windows once so the settings apply, and that's it.
+
+You can close Hopover any time. It picks up where it stopped.
 
 <table>
   <tr>
@@ -47,40 +53,34 @@ A new PC should feel like a treat. Instead you lose a weekend: reinstalling apps
     <td width="50%"><img src="docs/test-drive.png" alt="Test drive your apps during the move"></td>
   </tr>
   <tr>
-    <td align="center"><sub>Files, apps and WSL move at the same time.</sub></td>
-    <td align="center"><sub>Take one for a test drive while the rest is in the truck.</sub></td>
+    <td align="center"><sub>Files, apps and WSL move side by side.</sub></td>
+    <td align="center"><sub>Halfway through, you can take your apps for a test drive.</sub></td>
   </tr>
 </table>
 
-## How to move
+## Why I built this
 
-**1. On your old PC**
+I switch PCs every 2-3 years. And every time, setting up the new one costs me a day or two. Apps, SSH keys, WSL, env vars, that one scheduled task... and three weeks later I find out what I forgot.
 
-[Download Hopover.exe](https://github.com/madppiper/hopover/releases/latest/download/Hopover.exe) and start it. Click **This is the old PC**, untick what stays behind, and click **Prepare the move**. You get a pairing code.
+I wanted it to be comfortable. That's really all there is to it. Start it on both PCs, do something else, sit down at the new one and carry on.
 
-<p align="center"><img src="docs/pairing.png" alt="The pairing code" width="640"></p>
+Turns out nothing did that for my setup. The paid tools move apps and files, but I found none that claims WSL, SSH keys or env vars. And when my new laptop arrived, I gave Microsoft's own restore a chance. My desktop looked different and my settings were gone. As expected. A PC only feels like yours when the taskbar, the keyboard and the hundred small things you tuned over the years are where you left them.
 
-**2. On your new PC**
+So I built it. It's young - my own move is its first big test - so keep a backup of anything you can't lose. If it breaks, tell me and I'll fix it.
 
-Start Hopover there too. Click **This is the new PC**, type the code, and click **Start the move**. Go get that coffee.
+<p align="center"><img src="docs/delivered.png" alt="Everything made it" width="860"></p>
 
-**3. When you're ready to switch**
+## Good to know
 
-Click **Catch up with the old PC** one last time. Work through the short checklist: sign in to your browser and your password manager. That's the part no tool can do for you.
+- The exe isn't signed yet, so Windows warns you once. Click **More info**, then **Run anyway**.
+- Docker images come back with your next pull. Browser profiles and OneDrive sync after you sign in.
+- Epic, GOG, EA and Ubisoft games download again.
+- When you're done, delete `C:\hopover-store` on both PCs. It holds your Wi-Fi passwords and tokens.
 
-<p align="center"><img src="docs/delivered.png" alt="Everything made it" width="820"><br><sub>And now you know where the coffee comes in.</sub></p>
-
-## The honest part
-
-- **Hopover is young.** Keep a backup of anything you can't lose. If something breaks, [tell me](https://github.com/madppiper/hopover/issues/new): that's how it gets better.
-- **Windows will warn you.** The exe isn't signed yet. Click **More info**, then **Run anyway**.
-- **A few things stay behind.** Docker images come back with your next pull. Browser profiles and OneDrive sync after you sign in. Epic, GOG, EA and Ubisoft games download again.
-- **Clean up afterwards.** Delete `C:\hopover-store` on both PCs. It holds your Wi-Fi passwords and tokens.
-
----
+&nbsp;
 
 <p align="center">
-  <b>Did your move work?</b> <a href="https://buy.stripe.com/28E4gz8pMasZgLv1Snbsc00">☕ Buy me a coffee</a> · <a href="https://github.com/madppiper/hopover/issues/new?title=My%20move%20with%20Hopover">✍️ Leave a review</a> · <a href="https://github.com/madppiper/hopover">⭐ Star the repo</a>
+  Did your move work? <a href="https://buy.stripe.com/28E4gz8pMasZgLv1Snbsc00">Buy me a coffee</a> - <a href="https://github.com/ilscipio/hopover/issues/new?title=My%20move%20with%20Hopover">leave a review</a> - <a href="https://github.com/ilscipio/hopover">star the repo</a>
 </p>
 
-<p align="center"><sub>Source available under the <a href="LICENSE.md">PolyForm Noncommercial License</a>. Build it yourself with <code>.\build.ps1</code>.</sub></p>
+<p align="center"><sub>Made by <a href="https://www.ilscipio.com/en/">ilscipio</a>. Source available under the <a href="LICENSE.md">PolyForm Noncommercial License</a>. Build it yourself with <code>.\build.ps1</code>.</sub></p>

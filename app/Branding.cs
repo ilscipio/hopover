@@ -11,7 +11,7 @@ namespace Hopover.App
         // TODO(Paul): the AlternativeTo page of Hopover, where the review goes.
         public const string ReviewUrl = "[REVIEW-URL]";
         // TODO(Paul): the public source repository.
-        public const string SourceUrl = "https://github.com/madppiper/hopover";
+        public const string SourceUrl = "https://github.com/ilscipio/hopover";
 
         public const string PriceLabel = "pay what you want, €5 suggested";
         public const string LicenceName = "PolyForm Noncommercial 1.0.0";
