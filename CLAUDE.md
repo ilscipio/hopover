@@ -90,7 +90,7 @@ User steps: `README.md`.
   (`-Recopy` ignores it). `/E /XO /XJ`, never `/MIR`. A source file that is locked, gone or keeps changing does not fail a chunk: `ERROR not copied` in the log, checklist line, a catch-up retries it.
 - Events (stdout lines starting with `##`): `STEP <phase> start|done|failed|skipped`,
   `SCAN done total path`, `ITEM idx count planned path`, `ITEMDONE idx planned exit`,
-  `PROGRESS done total runBytes`, `SHARE pc|user|ips`, `END ...`.
+  `PROGRESS done total runBytes`, `SHARE pc|user|ips`, `DETAIL step text` (live line under a step), `END ...`.
 - Exit codes: 0 ok, 2 some phases failed, 1 fatal. `state-import.json` lists done phases.
 
 ## Link (pairing code, replaces SMB; added 2026-10-30, Paul's approved design)

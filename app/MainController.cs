@@ -296,6 +296,14 @@ namespace Hopover.App
                 });
         }
 
+        // "##DETAIL wsl 105.3 GB of about 143 GB": a live line under a step that takes long.
+        static void SetDetail(ObservableCollection<StepRow> rows, string data)
+        {
+            var parts = data.Split(new[] { ' ' }, 2);
+            var row = rows.FirstOrDefault(r => r.Key == parts[0]);
+            if (row != null) row.Detail = parts.Length > 1 ? parts[1].Trim() : "";
+        }
+
         static void SetStep(ObservableCollection<StepRow> rows, string data)
         {
             var parts = data.Split(new[] { ' ' }, 2);
@@ -559,6 +567,7 @@ namespace Hopover.App
             engine.OnEvent = (k, d) =>
             {
                 if (k == "STEP") { SetStep(exportRows, d); ExportRoute(); }
+                if (k == "DETAIL") SetDetail(exportRows, d);
                 if (k == "SHARE") ApplyShare(d);
             };
             engine.OnExit = code =>
@@ -1000,6 +1009,9 @@ namespace Hopover.App
                     if (!checkpointShown && installed.Count >= 4) ShowCheckpoint();
                     break;
                 }
+                case "DETAIL":
+                    SetDetail(importRows, data);
+                    break;
                 case "STEP":
                     SetStep(importRows, data);
                     if (data == "store start") F<TextBlock>("HeroItem").Text = "Copying the prepared data from the old PC (app list, settings, WSL, Docker volumes)";

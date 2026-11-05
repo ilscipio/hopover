@@ -68,6 +68,28 @@ function Invoke-Wsl([string[]]$Arguments) {
     ($out | ForEach-Object { "$_" -replace "`0", '' }) | Where-Object { $_.Trim() -ne '' }
 }
 
+# wsl --export and --import say nothing for an hour: the size of the growing file is the progress. Sets $script:WslExit.
+function Invoke-WslWatched([string[]]$Arguments, [string]$Watch, [int64]$Total, [string]$Step) {
+    $env:WSL_UTF8 = '1'
+    $o = [IO.Path]::GetTempFileName()
+    $e = [IO.Path]::GetTempFileName()
+    $line = ($Arguments | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }) -join ' '
+    $p = Start-Process wsl.exe -ArgumentList $line -PassThru -WindowStyle Hidden -RedirectStandardOutput $o -RedirectStandardError $e
+    $null = $p.Handle        # without this, ExitCode stays empty after the wait
+    while (-not $p.WaitForExit(3000)) {
+        $f = Get-Item -LiteralPath $Watch -Force -ErrorAction SilentlyContinue
+        if ($f) {
+            $text = '{0:N1} GB' -f ($f.Length / 1GB)
+            if ($Total -gt 0) { $text += ' of about {0:N0} GB' -f ($Total / 1GB) }
+            Send-Event DETAIL "$Step $text"
+        }
+    }
+    $script:WslExit = $p.ExitCode
+    Send-Event DETAIL "$Step "
+    @(Get-Content $o, $e -ErrorAction SilentlyContinue) | ForEach-Object { "$_" -replace "`0", '' } | Where-Object { $_.Trim() -ne '' }
+    Remove-Item $o, $e -ErrorAction SilentlyContinue
+}
+
 function Invoke-WslRoot([string]$Distro, [string]$Script) {
     # As base64: no quoting of the script survives the way through wsl.exe and a shell.
     $b = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Script.Replace("`r`n", "`n")))

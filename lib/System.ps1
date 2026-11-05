@@ -600,9 +600,9 @@ function Export-Wsl([string]$Store, $Config) {
             throw ("{0} needs about {1:N0} GB in the store and only {2:N0} GB are free on {3}. Free some space, or switch WSL off here and run it again later." -f $d, ($used / 1GB), ($free / 1GB), $dir.Substring(0, 2))
         }
         Write-Note "wsl --export $d (user $user) - this stops the distro"
-        $out = Invoke-Wsl @('--export', $d, "$dir\$d.tar")
+        $out = @(Invoke-WslWatched @('--export', $d, "$dir\$d.tar") "$dir\$d.tar" $used 'wsl')
         $tar = Get-Item "$dir\$d.tar" -ErrorAction SilentlyContinue
-        if ($LASTEXITCODE -ne 0 -or -not $tar -or $tar.Length -eq 0) { throw "wsl --export $d failed: $($out -join ' ')" }
+        if ($script:WslExit -ne 0 -or -not $tar -or $tar.Length -eq 0) { throw "wsl --export $d failed: $($out -join ' ')" }
         Write-Note ("{0}.tar: {1:N1} GB" -f $d, ($tar.Length / 1GB))
         Remove-Item "$dir\$d-delta.tgz" -ErrorAction SilentlyContinue
         $meta += [pscustomobject]@{ Name = $d; User = $user; Tar = "$d.tar"; ExportedAt = $at }
@@ -657,7 +657,7 @@ function Import-Wsl([string]$Store, [switch]$WhatIf) {
         Write-Note "wsl --import $name $target"
         if ($WhatIf) { continue }
         New-Item -ItemType Directory -Path $target -Force | Out-Null
-        $out = Invoke-Wsl @('--import', $name, $target, "$dir\$($m.Tar)")
+        $out = @(Invoke-WslWatched @('--import', $name, $target, "$dir\$($m.Tar)") "$target\ext4.vhdx" (Get-Item "$dir\$($m.Tar)").Length 'wsl')
         if (@(Get-WslDistros) -notcontains $name) { throw "wsl --import $name failed: $($out -join ' ')" }
         $names[$m.Name] = $name
         Write-Json ([pscustomobject]$names) $doneFile
@@ -697,7 +697,10 @@ function Export-DockerVolumes([string]$Store) {
     if (-not $vols) { Write-Note 'no named docker volumes'; return }
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
     $failed = @()
+    $n = 0
     foreach ($v in $vols) {
+        $n++
+        Send-Event DETAIL "docker $n of $($vols.Count): $v"
         Write-Note "docker volume $v"
         docker run --rm -v "${v}:/v:ro" -v "${dir}:/b" alpine tar -C /v -czf "/b/$v.tgz" . | Out-Null
         if ($LASTEXITCODE -ne 0) { $failed += $v; Remove-Item "$dir\$v.tgz" -ErrorAction SilentlyContinue }
