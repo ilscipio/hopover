@@ -38,6 +38,14 @@ User steps: `README.md`.
   (read as SYSTEM, imported by hand), PostgreSQL (`tar` with the server stopped), raw env values (`%VAR%` kept,
   REG_EXPAND_SZ), junctions/symlinks as links (`Reparse.cs`), catch-up (see below). The real run is still open.
 
+## Publishing (2026-11-05)
+
+- GitLab (`ilscipio/projects/hopover`) is the source. GitHub `madppiper/hopover` (public) is a mirror of it: change code on GitLab only.
+- `.github/workflows/release.yml` on GitHub: on a push that touches app, engine or config, it builds on `windows-2022`, runs the
+  selftest and publishes a release. Stable link: `https://github.com/madppiper/hopover/releases/latest/download/Hopover.exe`.
+- `.gitlab-ci.yml` deploys only the meeting point (`rendezvous\`). `dist\Hopover.exe` in git is a local build; the release is built new.
+- The exe is unsigned: SmartScreen warns. This repo is public, history included: no secrets in files, ever.
+
 ## Catch-up (old PC stays in use)
 
 - New PC: `import -Catchup` -> `Hopover.exe --link refresh` -> server op `refresh` runs the fixed

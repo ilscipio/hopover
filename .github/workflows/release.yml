@@ -1,0 +1,46 @@
+# Builds Hopover.exe on every change that reaches it, runs the link selftest and publishes the exe as a release.
+# The repo on GitHub is a mirror of GitLab: change the code there. Stable link:
+# https://github.com/madppiper/hopover/releases/latest/download/Hopover.exe
+name: Release the exe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'lib/**'
+      - 'config/**'
+      - 'hopover.ps1'
+      - 'build.ps1'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        shell: powershell
+        run: .\build.ps1
+
+      - name: Selftest
+        shell: powershell
+        run: |
+          $p = Start-Process -FilePath dist\Hopover.exe -ArgumentList '--link','selftest' -Wait -PassThru -NoNewWindow -RedirectStandardOutput selftest.txt
+          Get-Content selftest.txt
+          if ($p.ExitCode -ne 0) { throw "selftest failed (exit $($p.ExitCode))" }
+
+      - name: Publish
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $sha = $env:GITHUB_SHA.Substring(0, 7)
+          $tag = 'v' + (Get-Date -Format 'yyyy.MM.dd') + '-' + $sha
+          gh release create $tag dist\Hopover.exe --title "Hopover $tag" --notes "Built from $sha. The exe is not signed: Windows SmartScreen asks once (More info, Run anyway)." --latest
+          if ($LASTEXITCODE -ne 0) { throw 'gh release failed' }

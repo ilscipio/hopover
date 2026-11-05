@@ -21,6 +21,12 @@ the list: untick what you do not want. OneDrive and SeaDrive folders sync after 
 The checklist lists what no tool can move: sign-ins, licences, default apps, display
 scale. Docker images come back with a pull; the running Docker disk does not move.
 
+## Download
+
+<https://github.com/madppiper/hopover/releases/latest/download/Hopover.exe>
+
+The exe is not signed: Windows SmartScreen asks once (**More info**, **Run anyway**).
+
 ## Old PC
 
 1. Double-click `Hopover.exe`. Allow admin rights.

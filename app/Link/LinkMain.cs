@@ -368,7 +368,7 @@ namespace Hopover.Link
             string addr = "127.0.0.1:" + srv.TcpPort;
             var bad = LinkClient.Connect("4-alpha-bravo-cairo", "addr", addr, null, 0, null, null);
             bool burned = bad.Error == "wrong-code";
-            Thread.Sleep(300);
+            for (int i = 0; i < 100 && srv.Code == "4-alpha-bravo-cafe"; i++) Thread.Sleep(100);
             string fresh = srv.Code;
             burned &= fresh != "4-alpha-bravo-cafe";
             var again = LinkClient.Connect("4-alpha-bravo-cafe", "addr", addr, null, 0, null, null);
