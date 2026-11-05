@@ -71,7 +71,8 @@ User steps: `README.md`.
   (`chunkDepth` per kind; a `files` chunk = the files directly in a folder, no `/E`).
   The link opens before the scan (`share`, then `--link serve`): the code shows on the scan page and the new PC can connect early.
   It waits for `ready.json`, written at the end of `export`, removed by a new scan.
-  The list reaches the GUI before the measuring (`plan-partial.json`, `##PLANREADY`); sizes follow per chunk (`##SIZE bytes files group`).
+  The list reaches the GUI before the measuring (`manifest.json` written first, `##PLANREADY`); sizes follow per chunk (`##SIZE bytes files group`)
+  and the manifest is saved every 15 s. Prepare during the measuring kills the scan and goes on with the sizes so far: they only feed the progress bar.
   The scan runs one worker per core (at least 8), below-normal CPU, normal disk priority (`Native.Lower` "scan").
   `Group` = the top-level folder; the GUI shows groups, `deselected.json` drops groups.
 - `export`: winget, env, Windows settings (`registry`, `registryValues`, languages, time

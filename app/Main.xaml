@@ -293,10 +293,10 @@
           <StackPanel Margin="0,0,0,14">
             <TextBlock Text="OLD PC  ·  STEP 1 OF 2  ·  THE MANIFEST" Style="{StaticResource Eyebrow}"/>
             <TextBlock Text="What moves" Style="{StaticResource H1}" Margin="0,8,0,8"/>
-            <TextBlock x:Name="ScanSub" Style="{StaticResource Dim}" Text="Hopover measures every folder first. On a big disk this takes some minutes; the PC stays usable."/>
+            <TextBlock x:Name="ScanSub" Style="{StaticResource Dim}" Text="Hopover measures every folder. You don't have to wait for it: the sizes only feed the progress bar."/>
+            <TextBlock x:Name="CloudNote" Style="{StaticResource Eyebrow}" TextWrapping="Wrap" Margin="0,4,0,0"/>
             <ProgressBar x:Name="ScanBar" Margin="0,14,0,6"/>
             <TextBlock x:Name="ScanText" Style="{StaticResource Eyebrow}" TextTrimming="CharacterEllipsis"/>
-            <TextBlock x:Name="ScanCode" Visibility="Collapsed" FontFamily="{StaticResource MonoSemi}" FontSize="14" Foreground="{StaticResource Ink}" Margin="0,8,0,0" TextTrimming="CharacterEllipsis"/>
           </StackPanel>
           <Grid Grid.Row="1">
             <Grid.RowDefinitions>
@@ -372,14 +372,22 @@
               </StackPanel>
             </StackPanel>
           </Border>
-          <TextBlock Text="TOTAL" Style="{StaticResource Eyebrow}" Margin="0,22,0,0"/>
+          <Grid Margin="0,10,0,0">
+            <TextBlock Text="TOTAL" Style="{StaticResource Eyebrow}" VerticalAlignment="Center"/>
+            <Button x:Name="BtnSavePlan" Style="{StaticResource Ghost}" Content="Save this list as text" HorizontalAlignment="Right"/>
+          </Grid>
           <Border BorderBrush="{StaticResource Ink}" BorderThickness="0,2,0,0" Margin="0,8,0,0" Padding="0,10,0,0">
             <StackPanel>
-              <TextBlock x:Name="TotalBig" Text="..." FontFamily="{StaticResource DisplayBlack}" FontSize="52"/>
+              <TextBlock x:Name="TotalBig" Text="..." FontFamily="{StaticResource DisplayBlack}" FontSize="36"/>
               <TextBlock x:Name="TotalSub" Style="{StaticResource Dim}" FontSize="13" LineHeight="19"/>
-              <Button x:Name="BtnExport" Style="{StaticResource Primary}" Content="Prepare the move" FontSize="18" Margin="0,18,0,0" IsEnabled="False"/>
-              <Button x:Name="BtnSavePlan" Style="{StaticResource Ghost}" Content="Save this list as text" HorizontalAlignment="Left" Margin="0,12,0,0"/>
-              <TextBlock x:Name="CloudNote" Style="{StaticResource Eyebrow}" TextWrapping="Wrap" LineHeight="17" Margin="0,14,0,0"/>
+              <Border x:Name="PairBox" Visibility="Collapsed" BorderBrush="{StaticResource Rust}" BorderThickness="3" Padding="14,6" Margin="0,8,0,0">
+                <StackPanel>
+                  <TextBlock Text="PAIRING CODE FOR THE NEW PC" Style="{StaticResource Eyebrow}"/>
+                  <TextBlock x:Name="ScanCode" FontFamily="{StaticResource MonoSemi}" FontSize="19" Margin="0,2,0,0"/>
+                  <TextBlock x:Name="ScanPeer" Visibility="Collapsed" Style="{StaticResource Dim}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+              </Border>
+              <Button x:Name="BtnExport" Style="{StaticResource Primary}" Content="Prepare the move" FontSize="18" Margin="0,8,0,0" IsEnabled="False"/>
             </StackPanel>
           </Border>
         </StackPanel>

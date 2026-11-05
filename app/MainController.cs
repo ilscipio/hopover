@@ -72,7 +72,7 @@ namespace Hopover.App
         readonly Dictionary<string, CheckBox> newSwitches = new Dictionary<string, CheckBox>();
         readonly Queue<(DateTime At, long Bytes)> rateSamples = new Queue<(DateTime, long)>();
         readonly List<AppRow> installed = new List<AppRow>();
-        bool checkpointShown, previewRun, scanDirty, scanMeasuring, prepareQueued;
+        bool checkpointShown, previewRun, scanDirty, scanMeasuring;
         System.Windows.Threading.DispatcherTimer scanTimer;
         bool linkLost, needReboot, serveStopping;
         Action dialogCancel;
@@ -406,11 +406,7 @@ namespace Hopover.App
             };
             engine.OnExit = code =>
             {
-                bool queued = prepareQueued;
-                prepareQueued = false;
                 scanMeasuring = false;
-                F<Button>("BtnExport").Content = "Prepare the move";
-                F<Button>("BtnExport").IsEnabled = false;
                 var m = Json.Read(Path.Combine(Store, "manifest.json"));
                 if (code != 0 || m == null)
                 {
@@ -428,7 +424,6 @@ namespace Hopover.App
                 certsOnOldPc = Json.Long(m, "Certs") > 0;
                 F<UIElement>("OldCertPanel").Visibility = certsOnOldPc ? Visibility.Visible : Visibility.Collapsed;
                 F<Button>("BtnExport").IsEnabled = true;
-                if (queued) StartExport();
             };
             engine.Start(engineDir, new[] { "inventory", "-Store", Store, "-Speed", "balanced" });
         }
@@ -436,9 +431,11 @@ namespace Hopover.App
         // The rows come up as soon as the folders are listed; the measuring takes much longer than the listing.
         void ShowPartialPlan()
         {
-            var m = Json.Read(Path.Combine(Store, "plan-partial.json"));
+            var m = Json.Read(Path.Combine(Store, "manifest.json"));
             if (m == null) return;
             LoadGroups(m);
+            certsOnOldPc = Json.Long(m, "Certs") > 0;
+            F<UIElement>("OldCertPanel").Visibility = certsOnOldPc ? Visibility.Visible : Visibility.Collapsed;
             foreach (var g in groups) g.Measuring = true;
             F<UIElement>("ScanWait").Visibility = Visibility.Collapsed;
             scanDirty = true;
@@ -530,19 +527,23 @@ namespace Hopover.App
 
         void StartExport()
         {
-            if (engine.Running)
-            {
-                if (!scanMeasuring) return;
-                prepareQueued = true;
-                F<Button>("BtnExport").Content = "Starts when the measuring ends";
-                F<Button>("BtnExport").IsEnabled = false;
-                return;
-            }
+            if (engine.Running && !scanMeasuring) return;
             var steps = Checked(oldSwitches);
             string certPw = F<PasswordBox>("OldCertPw").Password;
             if (steps.Contains("certs") && certsOnOldPc && certPw.Length == 0)
             {
                 ShowDialog("Certificate password", "Type a password for the certificates, or switch the certificates off.", "OK", null, null);
+                return;
+            }
+            // The sizes only feed the progress bar: no reason to wait for the rest. Stop the measuring, then come back here.
+            if (engine.Running)
+            {
+                scanTimer?.Stop();
+                scanMeasuring = false;
+                F<Button>("BtnExport").IsEnabled = false;
+                engine.OnEvent = null;
+                engine.OnExit = code => StartExport();
+                engine.Kill();
                 return;
             }
             Json.Write(Path.Combine(Store, "deselected.json"), groups.Where(g => !g.Include).Select(g => g.Path).ToArray());
@@ -628,7 +629,7 @@ namespace Hopover.App
             {
                 case "code":
                     F<TextBlock>("LinkCode").Text = rest;
-                    ShowScanCode("Pairing code for the new PC:  " + rest);
+                    ShowScanCode(rest, null);
                     SetLinkBadge("WAITING FOR THE NEW PC", false);
                     F<TextBlock>("LinkPeer").Text = "";
                     break;
@@ -637,7 +638,7 @@ namespace Hopover.App
                     break;
                 case "peer":
                     F<TextBlock>("LinkPeer").Text = "Connected: " + rest;
-                    ShowScanCode("Connected to " + rest + ". It waits until this PC is ready.");
+                    ShowScanCode(null, "Connected: " + rest + ". It waits for this PC.");
                     break;
                 case "state":
                     if (rest == "burned")
@@ -650,11 +651,12 @@ namespace Hopover.App
             }
         }
 
-        void ShowScanCode(string text)
+        // Beside the button: this is where people look next.
+        void ShowScanCode(string code, string peer)
         {
-            var t = F<TextBlock>("ScanCode");
-            t.Text = text;
-            t.Visibility = Visibility.Visible;
+            if (code != null) { F<TextBlock>("ScanCode").Text = code; F<UIElement>("ScanPeer").Visibility = Visibility.Collapsed; }
+            if (peer != null) { F<TextBlock>("ScanPeer").Text = peer; F<UIElement>("ScanPeer").Visibility = Visibility.Visible; }
+            F<UIElement>("PairBox").Visibility = Visibility.Visible;
         }
 
         static string PathText(string path) =>
@@ -1398,12 +1400,15 @@ namespace Hopover.App
                     F<ProgressBar>("ScanBar").Value = 1;
                     F<TextBlock>("ScanText").Text = "Scan done. Untick whatever should stay behind.";
                     F<Button>("BtnExport").IsEnabled = true;
+                    ShowScanCode("7-yankee-orange-vision", "Connected: NEWPC-2026. It waits for this PC.");
+                    F<TextBlock>("CloudNote").Text = "OneDrive, SeaDrive and Google Drive stay out of the move: they sync after sign-in.";
                     ShowPage("PageScan", "Old PC");
                     break;
                 case "scan-reading":
                     foreach (var kv in BuildSwitches("OldSteps", ExportSteps.Select(s => s.Key), new string[0])) oldSwitches[kv.Key] = kv.Value;
                     foreach (var path in new[] { @"C:\Users\pp\.ssh", @"C:\Users\pp\.gradle", @"C:\Users\pp\AppData\Roaming\JetBrains", @"C:\java\workspace\slaides", @"C:\java\workspace\aivory-guard", @"C:\java\workspace\hopover" }) TickerAdd(path);
                     F<ProgressBar>("ScanBar").Value = 0.37;
+                    ShowScanCode("3-alpha-bravo-cafe", null);
                     F<TextBlock>("ScanText").Text = "Measured 693 of 1,873  ·  C:\\java\\workspace\\hopover";
                     ShowPage("PageScan", "Old PC");
                     break;

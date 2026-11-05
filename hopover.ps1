@@ -97,42 +97,19 @@ function Get-CertPassword([string]$Prompt) {
     Read-Host $Prompt -AsSecureString
 }
 
+# In one step: a measuring that gets stopped must not leave half a file.
+function Save-Manifest($Manifest) {
+    $tmp = "$Store\manifest.tmp"
+    Write-Json $Manifest $tmp
+    Move-Item -LiteralPath $tmp -Destination "$Store\manifest.json" -Force
+}
+
 function Invoke-Inventory {
     Write-Step 'Inventory'
     # ready.json = the store is complete. A new scan means it is not, until export ends. The new PC waits for this file.
     if (-not $Refresh) { Remove-Item "$Store\ready.json" -ErrorAction SilentlyContinue }
     Send-Event STEP 'inventory start'
     $plan = @(Get-CopyPlan $Config)
-    # A refresh runs while the user works on this PC: the sizes of the last scan are good enough.
-    if ($Refresh) {
-        $before = @{}
-        foreach ($p in @((Read-Json "$Store\manifest.json").Plan)) { if ($p) { $before["$($p.Kind)|$($p.Path)"] = $p } }
-        foreach ($p in $plan) {
-            $o = $before["$($p.Kind)|$($p.Path)"]
-            $p | Add-Member -NotePropertyName Bytes -NotePropertyValue $(if ($o) { [int64]$o.Bytes } else { [int64]0 }) -Force
-            $p | Add-Member -NotePropertyName Files -NotePropertyValue $(if ($o) { [int64]$o.Files } else { [int64]0 }) -Force
-        }
-    }
-    # Export measures too when it has to scan again: without sizes the progress bar and the
-    # largest-first order break on the new PC.
-    elseif ($Sizes -or $Command -in 'inventory', 'export') {
-        # The list is ready now; only the sizes are missing. The GUI shows it and fills the sizes in as they arrive.
-        Write-Json ([pscustomobject]@{ Plan = $plan }) "$Store\plan-partial.json"
-        Send-Event PLANREADY "$($plan.Count)"
-        Write-Note "$($plan.Count) chunks; measuring them in parallel"
-        Measure-Plan $plan @(Get-RobocopyExcludes $Config) $Speed
-        $total = ($plan | Measure-Object Bytes -Sum).Sum
-        $plan | Group-Object Group | ForEach-Object {
-            [pscustomobject]@{
-                GB = [math]::Round((($_.Group | Measure-Object Bytes -Sum).Sum) / 1GB, 2)
-                Files = ($_.Group | Measure-Object Files -Sum).Sum
-                Chunks = $_.Count
-                Why = $_.Group[0].Why
-                Path = $_.Name
-            }
-        } | Sort-Object GB -Descending | Format-Table -AutoSize | Out-String -Width 300 | Set-Content "$Store\sizes.txt" -Encoding UTF8
-        Write-Note ("Total to copy: {0:N1} GB in {1} chunks. Full list: $Store\sizes.txt" -f ($total / 1GB), $plan.Count) 'Green'
-    }
     $manifest = [pscustomobject]@{
         Computer   = $env:COMPUTERNAME
         User       = $env:USERNAME
@@ -160,7 +137,38 @@ function Invoke-Inventory {
             [pscustomobject]$h
         )
     }
-    Write-Json $manifest "$Store\manifest.json"
+    # A refresh runs while the user works on this PC: the sizes of the last scan are good enough.
+    if ($Refresh) {
+        $before = @{}
+        foreach ($p in @((Read-Json "$Store\manifest.json").Plan)) { if ($p) { $before["$($p.Kind)|$($p.Path)"] = $p } }
+        foreach ($p in $plan) {
+            $o = $before["$($p.Kind)|$($p.Path)"]
+            $p | Add-Member -NotePropertyName Bytes -NotePropertyValue $(if ($o) { [int64]$o.Bytes } else { [int64]0 }) -Force
+            $p | Add-Member -NotePropertyName Files -NotePropertyValue $(if ($o) { [int64]$o.Files } else { [int64]0 }) -Force
+        }
+    }
+    # Export measures too when it has to scan again: without sizes the progress bar and the
+    # largest-first order break on the new PC.
+    elseif ($Sizes -or $Command -in 'inventory', 'export') {
+        # The list is ready now; only the sizes are missing. The GUI shows it and fills the sizes in as they arrive.
+        # The manifest is complete already: the user can prepare the move at any moment, which stops the measuring.
+        Save-Manifest $manifest
+        Send-Event PLANREADY "$($plan.Count)"
+        Write-Note "$($plan.Count) chunks; measuring them in parallel"
+        Measure-Plan $plan @(Get-RobocopyExcludes $Config) $Speed { Save-Manifest $manifest }
+        $total = ($plan | Measure-Object Bytes -Sum).Sum
+        $plan | Group-Object Group | ForEach-Object {
+            [pscustomobject]@{
+                GB = [math]::Round((($_.Group | Measure-Object Bytes -Sum).Sum) / 1GB, 2)
+                Files = ($_.Group | Measure-Object Files -Sum).Sum
+                Chunks = $_.Count
+                Why = $_.Group[0].Why
+                Path = $_.Name
+            }
+        } | Sort-Object GB -Descending | Format-Table -AutoSize | Out-String -Width 300 | Set-Content "$Store\sizes.txt" -Encoding UTF8
+        Write-Note ("Total to copy: {0:N1} GB in {1} chunks. Full list: $Store\sizes.txt" -f ($total / 1GB), $plan.Count) 'Green'
+    }
+    Save-Manifest $manifest
     Write-Note "Manifest: $Store\manifest.json ($($plan.Count) copy items)"
     Send-Event STEP 'inventory done'
     $manifest

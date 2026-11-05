@@ -258,7 +258,7 @@ function Wait-Pool($Pool, [scriptblock]$OnStarted, [scriptblock]$OnDone, [script
     & $OnTick
 }
 
-function Measure-Plan($Plan, [string[]]$Excludes, [string]$Speed) {
+function Measure-Plan($Plan, [string[]]$Excludes, [string]$Speed, [scriptblock]$Save) {
     # robocopy /L lists what a copy would move, with the same excludes, and writes nothing.
     $probe = Join-Path $env:TEMP 'hopover-probe-does-not-exist'
     $opts = @('/L', '/XJ', '/BYTES', '/NFL', '/NDL', '/NJH', '/R:0', '/W:0')
@@ -269,6 +269,7 @@ function Measure-Plan($Plan, [string[]]$Excludes, [string]$Speed) {
     $pool = [Hopover.RoboPool]::new($jobs.ToArray(), $workers, 'scan', $true)
     $pool.Start()
     $script:measured = 0
+    $script:savedAt = [DateTime]::Now
     Wait-Pool $pool { param($j) Send-Event SCANNING $j.Path } {
         param($j)
         $Plan[$j.Index] | Add-Member -NotePropertyName Bytes -NotePropertyValue $j.Bytes -Force
@@ -276,7 +277,10 @@ function Measure-Plan($Plan, [string[]]$Excludes, [string]$Speed) {
         $script:measured++
         Send-Event SCAN "$($script:measured) $($Plan.Count) $($j.Path)"
         Send-Event SIZE "$($j.Bytes) $($j.Files) $($Plan[$j.Index].Group)"
-    } {}
+    } {
+        # Every 15 seconds: the sizes so far survive a stop of the measuring.
+        if ($Save -and ([DateTime]::Now - $script:savedAt).TotalSeconds -ge 15) { & $Save; $script:savedAt = [DateTime]::Now }
+    }
 }
 
 function ConvertTo-TargetPath([string]$OldPath, [string]$OldProfile) {

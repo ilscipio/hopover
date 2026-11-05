@@ -44,7 +44,7 @@ Nervous? Switch on **Preview first** and you get a text file of everything Hopov
 
 ## How to move
 
-**On your old PC:** start Hopover and click **This is the old PC**. The pairing code shows up right away. Untick what stays behind and click **Prepare the move**.
+**On your old PC:** start Hopover and click **This is the old PC**. The pairing code shows up right away, next to the button. Untick what stays behind and click **Prepare the move** whenever you like.
 
 **On your new PC:** start Hopover, click **This is the new PC** and type the code. It waits until the old PC is ready. Click **Start the move** and go get a coffee.
 
