@@ -578,7 +578,7 @@
                 <TextBlock Text="%" FontFamily="{StaticResource Stencil}" FontSize="48" Margin="6,0,0,6" VerticalAlignment="Bottom"/>
               </StackPanel>
               <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,8">
-                <TextBlock x:Name="HeroBytes" Text="Waiting for the files step" FontFamily="{StaticResource Display}" FontSize="22" HorizontalAlignment="Right"/>
+                <TextBlock x:Name="HeroBytes" Text="Getting ready" FontFamily="{StaticResource Display}" FontSize="22" HorizontalAlignment="Right"/>
                 <TextBlock x:Name="HeroRate" Style="{StaticResource Eyebrow}" Foreground="{StaticResource Ink2}" FontSize="12" HorizontalAlignment="Right" Margin="0,4,0,0"/>
               </StackPanel>
             </Grid>

@@ -1043,6 +1043,16 @@ namespace Hopover.App
                 }
                 case "STEP":
                     SetStep(importRows, data);
+                    // The percentage counts the files; every step before them says what happens now.
+                    if (data.EndsWith(" start") && data != "files start" && data != "apps start" && F<UIElement>("ActivePanel").Visibility != Visibility.Visible)
+                    {
+                        var running = importRows.FirstOrDefault(r => r.State == "running" && data.StartsWith(r.Key + " "));
+                        if (running != null)
+                        {
+                            F<TextBlock>("HeroBytes").Text = running.Label;
+                            F<TextBlock>("HeroItem").Text = "The percentage starts with the files. This step comes first.";
+                        }
+                    }
                     if (data == "store start") F<TextBlock>("HeroItem").Text = "Copying the prepared data from the old PC (app list, settings, WSL, Docker volumes)";
                     if (data == "apps done" && !checkpointShown && installed.Count > 0) ShowCheckpoint();
                     if (data == "files start")
