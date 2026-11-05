@@ -13,7 +13,7 @@
 
 <p align="center">
   Or with winget: <code>winget install Ilscipio.Hopover</code><br>
-  <sub>The package is in review at Microsoft. Until it's through, use the download above.</sub>
+  <sub>Coming soon: the package isn't in the winget catalog yet. Until then, use the download above.</sub>
 </p>
 
 <p align="center">
