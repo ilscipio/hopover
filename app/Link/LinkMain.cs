@@ -373,7 +373,8 @@ namespace Hopover.Link
             burned &= fresh != "4-alpha-bravo-cafe";
             var again = LinkClient.Connect("4-alpha-bravo-cafe", "addr", addr, null, 0, null, null);
             Check(say, "wrong guess ends the session: the old code is dead, a new code exists", burned && again.Channel == null);
-            Thread.Sleep(300);
+            // The second wrong guess burns the code too, and making a code takes a while on a busy PC.
+            for (int i = 0; i < 100 && srv.Code == fresh; i++) Thread.Sleep(100);
             var good = LinkClient.Connect(srv.Code, "addr", addr, null, 0, null, null);
             Check(say, "the fresh code pairs", good.Channel != null);
             if (good.Channel != null) good.Channel.Close();

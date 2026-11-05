@@ -36,11 +36,29 @@ scale. Docker images come back with a pull; the running Docker disk does not mov
    The code works for one try: a wrong guess makes a new code on the old PC.
    If there is no direct route, put both PCs on one network or move the files with a USB disk.
    No server ever carries your files.
-3. Choose the speed. Click **Start the move**. Sign in to 1Password and OneDrive meanwhile.
-4. Click **Open the checklist** and work through it.
-5. Click **Turn on scheduled tasks** when the repos and venvs work.
+3. To review first: switch on **Preview first** and click **Start the move**. Nothing changes.
+   `C:\hopover-store\preview.txt` opens with what would happen: data per folder, each file
+   that would be replaced, links, apps, env var names, registry keys, tasks, WSL, what stays out.
+   On the old PC, **Save this list as text** writes the ticked folders to `plan.txt`.
+4. Choose the speed. Click **Start the move**. Sign in to 1Password and OneDrive meanwhile.
+5. Click **Open the checklist** and work through it.
+6. Click **Turn on scheduled tasks** when the repos and venvs work.
 
 Closing Hopover is safe. Start it again: done steps and copied chunks are skipped.
+
+## The new PC can have things on it already
+
+A restored Windows backup and fresh installs leave files, settings and defaults on the new
+PC. The old PC is the truth for the first move:
+
+- A file that stands here already and differs: the old PC's version wins, even when the
+  file here is newer. The earlier file goes to `C:\hopover-held\<time>\new-pc-before`.
+- A file only on the new PC stays.
+- A file in use on the new PC stays behind. The log names it. Close the app and catch up.
+- Env var: the old PC's value wins; `env-before.json` keeps the earlier value. PATH merges.
+- Registry settings from the old PC go over what is there. A machine vendor key that an
+  installer made stays.
+- WSL: a distro of the same name stays; yours arrives as `<name>-moved` and is the default.
 
 ## Keep working on the old PC
 
@@ -80,7 +98,7 @@ run in the background while the files copy.
 
 1. Old PC: click **Stop sharing**.
 2. Delete `C:\hopover-store` on both PCs. It holds Wi-Fi passwords, env values and saved logins.
-3. Look through `C:\hopover-held`, then delete it.
+3. Look through `C:\hopover-held`, then delete it. It holds what Hopover moved aside.
 
 ## Build
 

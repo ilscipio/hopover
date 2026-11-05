@@ -294,7 +294,7 @@ function ConvertTo-SourcePath([string]$OldPath, [string]$From) {
 }
 
 function Copy-Plan($Plan, [string]$From, [string]$OldProfile, [string[]]$Excludes, [string]$Store, [string]$Speed,
-                   [scriptblock]$Heartbeat, [switch]$Recopy, [switch]$WhatIf, [int64]$SyncBase = 0, [string]$Hold, [string]$SyncLog) {
+                   [scriptblock]$Heartbeat, [switch]$Recopy, [switch]$WhatIf, [int64]$SyncBase = 0, [switch]$First, [string]$Hold, [string]$SyncLog) {
     # The excludes were expanded on the old PC; full paths in them must point at its share.
     $ex = @($Excludes | ForEach-Object { if ($_ -match '^[A-Za-z]:\\') { ConvertTo-SourcePath $_ $From } else { $_ } })
     $log = Join-Path $Store 'logs\robocopy-errors.log'
@@ -306,8 +306,9 @@ function Copy-Plan($Plan, [string]$From, [string]$OldProfile, [string[]]$Exclude
     # /XO: a re-run never overwrites a file that is newer on this PC. File lines stay on
     # (no /NFL): their byte counts drive the progress bar.
     $opts = @('/COPY:DAT', '/DCOPY:DAT', "/MT:$($sp.Mt)", '/R:1', '/W:1', '/XJ', '/XO', '/NP', '/NDL', '/NJH', '/NJS', '/BYTES')
-    if ($WhatIf) { $opts += '/L' }
-    elseif ($SyncBase -gt 0) { $opts += "/SYNC:$SyncBase", "/HOLD:$Hold", "/SYNCLOG:$SyncLog" }
+    if ($WhatIf) { $opts += '/L', '/PREVIEW' }
+    if ($SyncBase -gt 0) { $opts += "/SYNC:$SyncBase", "/HOLD:$Hold", "/SYNCLOG:$SyncLog" }
+    elseif ($First) { $opts += '/FIRST', "/HOLD:$Hold", "/SYNCLOG:$SyncLog" }
     # Junctions and links that point into the old profile.
     if ($OldProfile -ine $env:USERPROFILE) { $opts += "/LINKMAP:$($OldProfile.TrimEnd('\'))|$($env:USERPROFILE.TrimEnd('\'))" }
 
@@ -328,7 +329,7 @@ function Copy-Plan($Plan, [string]$From, [string]$OldProfile, [string[]]$Exclude
     Write-Note "$($todo.Count) chunks, $($sp.Workers) at once, $($sp.Mt) threads each ($Speed)"
     $pool.Start()
 
-    $state = @{ DoneBytes = $skipped; DoneCopied = [int64]0; Failed = @(); LastSave = [DateTime]::Now; Fatal = 0; LinkLost = $false }
+    $state = @{ DoneBytes = $skipped; DoneCopied = [int64]0; Failed = @(); LastSave = [DateTime]::Now; Fatal = 0; LinkLost = $false; Preview = @{} }
     Wait-Pool $pool {
         param($j)
         Send-Event ITEM "$($j.Index) $($todo.Count) $($j.Planned) $($j.Path)"
@@ -338,6 +339,8 @@ function Copy-Plan($Plan, [string]$From, [string]$OldProfile, [string[]]$Exclude
         $state.DoneCopied += $j.Copied
         Send-Event ITEMDONE "$($j.Index) $($j.Planned) $($j.ExitCode)"
         if ($j.ExitCode -ge 8) { Write-Warn "copy exit $($j.ExitCode) for $($j.Path) (see $log)"; $state.Failed += $j.Path }
+        elseif (-not $WhatIf) { [void]$done.Add("$($todo[$j.Index].Kind)|$($j.Path)") }
+        if ($WhatIf) { $group = $todo[$j.Index].Group; $state.Preview[$group] = [int64]$state.Preview[$group] + $j.Copied }
         # Exit 16 again and again: the link is gone. Stop here: each remaining chunk would only fail in a second, and a
         # reconnect goes on from the done list.
         if ($j.ExitCode -ge 16) {
@@ -348,7 +351,6 @@ function Copy-Plan($Plan, [string]$From, [string]$OldProfile, [string[]]$Exclude
                 else { $state.Fatal = 0 }
             }
         } elseif ($j.ExitCode -ge 0) { $state.Fatal = 0 }
-        elseif (-not $WhatIf) { [void]$done.Add("$($todo[$j.Index].Kind)|$($j.Path)") }
         if (([DateTime]::Now - $state.LastSave).TotalSeconds -ge 10) { Write-Json @($done) $doneFile; $state.LastSave = [DateTime]::Now }
     } {
         # Done chunks count with their planned size; running ones with what they copied so far.
@@ -359,6 +361,11 @@ function Copy-Plan($Plan, [string]$From, [string]$OldProfile, [string[]]$Exclude
         while ($pool.Errors.TryDequeue([ref]$e)) { Add-Content -Path $log -Value $e -Encoding UTF8 }
         # Not named OnTick: inside Wait-Pool that name is this very block.
         if ($Heartbeat) { & $Heartbeat }
+    }
+    if ($WhatIf) {
+        # Per folder: what the copy would bring. Written to a file: the output of this function is the failed list.
+        $state.Preview.GetEnumerator() | Sort-Object Value -Descending | ForEach-Object { '{0,12:N1} MB  {1}' -f ($_.Value / 1MB), $_.Key } |
+            Set-Content (Join-Path $Store 'preview-files.txt') -Encoding UTF8
     }
     if (-not $WhatIf) {
         Write-Json @($done) $doneFile

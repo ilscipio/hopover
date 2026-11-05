@@ -132,8 +132,13 @@ function Import-Apps([string]$Store, $Config, [switch]$WhatIf) {
     $userScope = @(Read-Json (Join-Path $Store 'apps\user-scope.json') | Where-Object { $_ })
     $extra = @(Read-Json (Join-Path $Store 'apps\extra.json') | Where-Object { $_ })
     if ($WhatIf) {
-        Write-Note "would install: $(@($Config.priorityApps) + $userScope + $extra -join ', ')"
-        Write-Note "would run: winget import -i $json --ignore-unavailable"
+        $ids = @((Read-Json $json).Sources | ForEach-Object { $_.Packages.PackageIdentifier } | Where-Object { $Config.appSkip -notcontains $_ })
+        Write-Note "winget, first: $(@($Config.priorityApps) -join ', ')"
+        Write-Note "winget, by id: $(@($userScope + $extra + $ids | Sort-Object -Unique) -join ', ')"
+        Write-Note "not installed (appSkip): $(@($Config.appSkip) -join ', ')"
+        Write-Note "Chocolatey: $(@(Read-Json (Join-Path $Store 'apps\choco.json') | Where-Object { $_ } | ForEach-Object { "$($_.Id) $($_.Version)" }) -join ', ')"
+        Write-Note "copied as a folder: $(@(Read-Json (Join-Path $Store 'apps\programs.json') | Where-Object { $_ } | ForEach-Object { "$($_.Name) ($($_.Path))" }) -join '; ')"
+        Write-Note "Visual Studio workloads: $(@(Read-Json (Join-Path $Store 'apps\vs.json') | Where-Object { $_ } | ForEach-Object { $_.Path }) -join ', ')"
         return
     }
     Assert-Winget
@@ -198,6 +203,7 @@ function Import-EnvVars([string]$Store, [string]$OldProfile, [switch]$WhatIf) {
     # env-base.json = what the last import applied. Value here = that base: only the old PC changed it, so it updates.
     $base = Read-Json (Join-Path $Store 'env-base.json')
     $conflicts = @()
+    $before = @()
     foreach ($scope in 'User', 'Machine') {
         foreach ($p in $vars.$scope.PSObject.Properties) {
             $name = $p.Name; $old = & $fix $p.Value
@@ -220,7 +226,12 @@ function Import-EnvVars([string]$Store, [string]$OldProfile, [switch]$WhatIf) {
                 if (-not $WhatIf) { Set-RawEnvValue $scope $name $old }
             } elseif ($cur -ne $old) {
                 $was = if ($base) { & $fix $base.$scope.$name } else { $null }
-                if ($null -ne $was -and $cur -eq $was) {
+                # First import: a restore or an installer set this value, not the user's work: the old PC wins. env-before.json keeps it.
+                if (-not $base) {
+                    Write-Note "$scope $name replaced (it stood here already)"
+                    $before += [pscustomobject]@{ Scope = $scope; Name = $name; Value = $cur }
+                    if (-not $WhatIf) { Set-RawEnvValue $scope $name $old }
+                } elseif ($null -ne $was -and $cur -eq $was) {
                     Write-Note "$scope $name changed on the old PC"
                     if (-not $WhatIf) { Set-RawEnvValue $scope $name $old }
                 } else { $conflicts += "$scope $name" }
@@ -230,6 +241,7 @@ function Import-EnvVars([string]$Store, [string]$OldProfile, [switch]$WhatIf) {
     if (-not $WhatIf) {
         Send-EnvChanged
         Copy-Item (Join-Path $Store 'env.json') (Join-Path $Store 'env-base.json') -Force
+        if ($before) { Write-Json @($before) (Join-Path $Store 'env-before.json') }
     }
     foreach ($c in $conflicts) { Write-Warn "kept the new value of $c (differs from the old PC)" }
     $conflicts
@@ -599,29 +611,45 @@ function Import-Wsl([string]$Store, [switch]$WhatIf) {
         throw 'WSL is installed now. Restart the PC, then start Hopover again: the WSL step goes on.'
     }
     $have = @(Get-WslDistros)
+    # Old distro name -> name here. A distro of the same name that Hopover did not make (a restored Store app, a first
+    # launch) stays untouched: yours arrives beside it, and it becomes the default.
+    $doneFile = Join-Path $dir 'imported.json'
+    $names = @{}
+    $seen = Read-Json $doneFile
+    if ($seen) { foreach ($p in $seen.PSObject.Properties) { $names[$p.Name] = $p.Value } }
     foreach ($m in @($meta)) {
-        if ($have -contains $m.Name) { Write-Note "$($m.Name) exists"; continue }
-        $target = Join-Path $env:LOCALAPPDATA "wsl\$($m.Name)"
-        Write-Note "wsl --import $($m.Name) $target"
+        if ($names[$m.Name] -and $have -contains $names[$m.Name]) { Write-Note "$($names[$m.Name]) was imported earlier"; continue }
+        $name = $m.Name
+        if ($have -contains $name) {
+            $name = "$($m.Name)-moved"
+            Write-Warn "A distro $($m.Name) exists here already: it stays, yours arrives as $name"
+        }
+        if ($have -contains $name) { $names[$m.Name] = $name; continue }
+        $target = Join-Path $env:LOCALAPPDATA "wsl\$name"
+        Write-Note "wsl --import $name $target"
         if ($WhatIf) { continue }
         New-Item -ItemType Directory -Path $target -Force | Out-Null
-        $out = Invoke-Wsl @('--import', $m.Name, $target, "$dir\$($m.Tar)")
-        if (@(Get-WslDistros) -notcontains $m.Name) { throw "wsl --import $($m.Name) failed: $($out -join ' ')" }
+        $out = Invoke-Wsl @('--import', $name, $target, "$dir\$($m.Tar)")
+        if (@(Get-WslDistros) -notcontains $name) { throw "wsl --import $name failed: $($out -join ' ')" }
+        $names[$m.Name] = $name
+        Write-Json ([pscustomobject]$names) $doneFile
         if ($m.User -and $m.User -ne 'root') {
             # An imported distro starts as root; wsl.conf restores the default user.
             $sh = "grep -q '^\[user\]' /etc/wsl.conf 2>/dev/null || printf '\n[user]\ndefault=$($m.User)\n' >> /etc/wsl.conf"
-            Invoke-WslRoot $m.Name $sh | Out-Null
-            Invoke-Wsl @('--terminate', $m.Name) | Out-Null
+            Invoke-WslRoot $name $sh | Out-Null
+            Invoke-Wsl @('--terminate', $name) | Out-Null
         }
     }
-    $def = @($meta)[0].Name
-    if (-not $WhatIf -and $def) { Invoke-Wsl @('--set-default', $def) | Out-Null }
+    if ($WhatIf) { return }
+    Write-Json ([pscustomobject]$names) $doneFile
+    $def = $names[@($meta)[0].Name]
+    if ($def) { Invoke-Wsl @('--set-default', $def) | Out-Null }
     foreach ($m in @($meta)) {
-        if ($WhatIf -or -not (Test-Path "$dir\$($m.Name)-delta.tgz")) { continue }
+        if (-not $names[$m.Name] -or -not (Test-Path "$dir\$($m.Name)-delta.tgz")) { continue }
         # --keep-newer-files: a file changed in this distro since then stays.
-        Write-Note "wsl changes into $($m.Name)"
+        Write-Note "wsl changes into $($names[$m.Name])"
         $src = ConvertTo-WslPath "$dir\$($m.Name)-delta.tgz"
-        Invoke-WslRoot $m.Name "tar -C / --keep-newer-files -xzpf '$src' 2>/dev/null; true" | Out-Null
+        Invoke-WslRoot $names[$m.Name] "tar -C / --keep-newer-files -xzpf '$src' 2>/dev/null; true" | Out-Null
     }
 }
 
@@ -653,6 +681,7 @@ function Import-DockerVolumes([string]$Store, [switch]$WhatIf) {
     $files = Get-ChildItem (Join-Path $Store 'docker\*.tgz') -ErrorAction SilentlyContinue
     if (-not $files) { return }
     # Throw, not return: the step stays open, and the next start of the move does it again.
+    if ($WhatIf) { foreach ($f in $files) { Write-Note "docker volume $($f.BaseName) ($([int]($f.Length / 1MB)) MB)" }; return }
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw 'docker is missing: install Docker Desktop, start it once, then start the move again (only the Docker step).' }
     if (-not $WhatIf) { Assert-DockerUp 'start the move again (only the Docker step).' }
     $dir = Join-Path $Store 'docker'
@@ -721,6 +750,7 @@ function Import-Databases([string]$Store, [switch]$WhatIf) {
         $mark = "$dir\$($f.BaseName).applied"
         # This server may hold new work by now. Its data stays; the checklist names the newer archive.
         if (Test-Path $mark) { Write-Note "$($f.BaseName): restored earlier, this PC's data stays"; continue }
+        if ($WhatIf) { Write-Note "$($f.BaseName): the data of the old PC replaces the data of a fresh install (which is kept beside it)"; continue }
         $s = @(Get-PgServices | Where-Object { $_.Name -eq $f.BaseName })[0]
         if (-not $s) { $failed += $f.BaseName; continue }
         Write-Note "$($s.Name): data from the old PC into $($s.Data)"

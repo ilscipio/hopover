@@ -70,7 +70,7 @@ namespace Hopover.App
         readonly Dictionary<string, CheckBox> newSwitches = new Dictionary<string, CheckBox>();
         readonly Queue<(DateTime At, long Bytes)> rateSamples = new Queue<(DateTime, long)>();
         readonly List<AppRow> installed = new List<AppRow>();
-        bool checkpointShown;
+        bool checkpointShown, previewRun;
         bool linkLost, needReboot, serveStopping;
         Action dialogCancel;
         int sumApps, sumTasks, sumDistros;
@@ -113,6 +113,8 @@ namespace Hopover.App
             Click("BtnImport", StartImport);
             Click("BtnCatchupNow", StartCatchup);
             Click("BtnCatchup", StartCatchup);
+            Click("BtnPreviewOpen", () => OpenFile(Path.Combine(Store, "preview.txt")));
+            Click("BtnSavePlan", SavePlan);
             Click("BtnDoneCatchup", StartCatchup);
             Click("BtnChecklist", ShowChecklist);
             Click("BtnCheckBack", () => ShowPage(returnPage, "New PC"));
@@ -700,7 +702,8 @@ namespace Hopover.App
                 return;
             }
             var args = new List<string> { "import", "-From", from, "-Store", Store, "-Only", string.Join(",", steps), "-Speed", Speed };
-            if (F<CheckBox>("DrySwitch").IsChecked == true) args.Add("-WhatIf");
+            previewRun = F<CheckBox>("DrySwitch").IsChecked == true;
+            if (previewRun) args.Add("-WhatIf");
             RunImport(args, ImportSteps, steps, certPw, "Moving to this PC", "LOADING THE TRUCK");
         }
 
@@ -715,7 +718,10 @@ namespace Hopover.App
                 F<TextBox>("CodeBox").Focus();
                 return;
             }
-            RunImport(new List<string> { "import", "-Catchup", "-From", from, "-Store", Store, "-Speed", Speed }, CatchupSteps, null, "", "Catching up with the old PC", "PICKING UP THE LAST BOXES");
+            var args = new List<string> { "import", "-Catchup", "-From", from, "-Store", Store, "-Speed", Speed };
+            previewRun = F<CheckBox>("DrySwitch").IsChecked == true;
+            if (previewRun) args.Add("-WhatIf");
+            RunImport(args, CatchupSteps, null, "", "Catching up with the old PC", "PICKING UP THE LAST BOXES");
         }
 
         void RunImport(List<string> args, (string Key, string Label)[] rows, ICollection<string> steps, string certPw, string title, string route)
@@ -813,12 +819,53 @@ namespace Hopover.App
             }
         }
 
+        // Old PC: the list as it stands, ticks included, as text.
+        void SavePlan()
+        {
+            try
+            {
+                var sb = new StringBuilder();
+                sb.AppendLine("Hopover: what moves from " + Environment.MachineName + ", " + DateTime.Now.ToString("yyyy-MM-dd HH:mm"));
+                sb.AppendLine("Apps, settings, registry, WSL and the rest are listed by the preview on the new PC.");
+                sb.AppendLine();
+                foreach (var g in groups.OrderByDescending(x => x.Include).ThenByDescending(x => x.Bytes))
+                    sb.AppendLine((g.Include ? "[x] " : "[ ] ") + g.SizeText.PadLeft(10) + "  " + g.Files.ToString("N0").PadLeft(10) + " files  " + g.WhyText.PadRight(26) + g.Path);
+                string path = Path.Combine(Store, "plan.txt");
+                File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
+                OpenFile(path);
+            }
+            catch (Exception e) { ShowDialog("Not saved", e.Message, "OK", null, null); }
+        }
+
+        void ShowPreviewDone(int code)
+        {
+            previewRun = false;
+            F<CheckBox>("DrySwitch").IsChecked = false;
+            F<UIElement>("HeroCard").Visibility = Visibility.Collapsed;
+            F<UIElement>("DoneCard").Visibility = Visibility.Visible;
+            bool ok = File.Exists(Path.Combine(Store, "preview.txt"));
+            F<TextBlock>("ImportTitle").Text = "Preview";
+            F<TextBlock>("DoneStampText").Text = "NOTHING CHANGED";
+            F<TextBlock>("DoneTitle").Text = ok ? "Read the preview, then start" : "The preview stopped";
+            F<TextBlock>("DoneText").Text = ok ? "The list is in " + Store + "\\preview.txt. Go back and start the move when it looks right." : "The details show why.";
+            var back = F<Button>("BtnReconnect");
+            back.Content = "Back to the move";
+            back.Visibility = Visibility.Visible;
+            F<UIElement>("BtnPreviewOpen").Visibility = ok ? Visibility.Visible : Visibility.Collapsed;
+            SetRoute(0, "PREVIEW");
+            if (currentPage != "PageImport") ShowPage("PageImport", "New PC");
+            if (ok) OpenFile(Path.Combine(Store, "preview.txt"));
+        }
+
         void OnImportExit(int code)
         {
             F<UIElement>("ActivePanel").Visibility = Visibility.Collapsed;
             F<UIElement>("HeroHazard").Visibility = Visibility.Collapsed;
             F<UIElement>("HeroWait").Visibility = Visibility.Collapsed;
             foreach (var r in importRows.Where(r => r.State == "running")) r.State = code == 0 ? "done" : "failed";
+            if (previewRun) { ShowPreviewDone(code); return; }
+            F<UIElement>("BtnPreviewOpen").Visibility = Visibility.Collapsed;
+            F<Button>("BtnReconnect").Content = "Connect again";
             bool ok = code == 0;
             F<TextBlock>("ImportTitle").Text = ok ? "Moved" : "Stopped";
             if (ok)

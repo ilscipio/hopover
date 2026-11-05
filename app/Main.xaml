@@ -370,8 +370,9 @@
               <TextBlock x:Name="TotalBig" Text="..." FontFamily="{StaticResource DisplayBlack}" FontSize="52"/>
               <TextBlock x:Name="TotalSub" Style="{StaticResource Dim}" FontSize="13" LineHeight="19"/>
               <Button x:Name="BtnExport" Style="{StaticResource Primary}" Content="Prepare the move" FontSize="18" Margin="0,18,0,0" IsEnabled="False"/>
+              <Button x:Name="BtnSavePlan" Style="{StaticResource Ghost}" Content="Save this list as text" HorizontalAlignment="Left" Margin="0,12,0,0"/>
               <TextBlock Style="{StaticResource Eyebrow}" TextWrapping="Wrap" LineHeight="17" Margin="0,14,0,0"
-                         Text="OneDrive and SeaDrive folders sync by themselves after sign-in. 1Password lives in your account: you only sign in."/>
+                         Text="OneDrive and SeaDrive sync after sign-in."/>
             </StackPanel>
           </Border>
         </StackPanel>
@@ -505,8 +506,8 @@
                   </StackPanel>
                   <CheckBox x:Name="DrySwitch" Style="{StaticResource Switch}" Margin="0,20,0,0">
                     <StackPanel>
-                      <TextBlock Text="Dry run" FontFamily="{StaticResource BodySemi}"/>
-                      <TextBlock Text="Show what would happen; change nothing." Style="{StaticResource Eyebrow}"/>
+                      <TextBlock Text="Preview first" FontFamily="{StaticResource BodySemi}"/>
+                      <TextBlock Text="Write what would happen to a text file; change nothing." Style="{StaticResource Eyebrow}"/>
                     </StackPanel>
                   </CheckBox>
                 </StackPanel>
@@ -568,6 +569,7 @@
               <TextBlock x:Name="DoneTitle" Text="The move stopped" FontFamily="{StaticResource Display}" FontSize="26" TextWrapping="Wrap" Margin="0,14,0,0"/>
               <TextBlock x:Name="DoneText" Style="{StaticResource Dim}" Margin="0,4,0,0"/>
               <WrapPanel Margin="0,22,0,0">
+                <Button x:Name="BtnPreviewOpen" Content="Open the preview" Visibility="Collapsed" Margin="0,0,10,10"/>
                 <Button x:Name="BtnReconnect" Content="Connect again" Visibility="Collapsed" Margin="0,0,10,10"/>
                 <Button x:Name="BtnCatchup" Content="Catch up with the old PC" Margin="0,0,10,10"/>
                 <Button x:Name="BtnChecklist" Content="Open the checklist" Margin="0,0,10,10"/>

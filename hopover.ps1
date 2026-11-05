@@ -234,7 +234,7 @@ function Start-BackgroundApps {
     Write-Step 'Apps (winget) start in the background'
     Send-Event STEP 'apps start'
     Write-Note "winget log: $log"
-    [pscustomobject]@{ PS = $ps; Handle = $ps.BeginInvoke(); Reported = $false; Seen = 0 }
+    [pscustomobject]@{ PS = $ps; Handle = $ps.BeginInvoke(); Reported = $false; Seen = 0; Log = $log }
 }
 
 # The background runspace has no console: its Write-Host lines (##APP events) arrive in its information stream.
@@ -334,17 +334,19 @@ function Request-OldPcRefresh {
     Write-Warn 'Some steps on the old PC failed: the catch-up takes what is there.'
 }
 
-function Get-SyncNotes([string]$Dir, [string]$Hold, [hashtable]$Notes) {
+function Get-SyncNotes([string]$Dir, [string]$Hold, [hashtable]$Notes, [switch]$Preview) {
     # Each copy process keeps its own list. Together they tell the user what to look at.
     $lines = @(Get-ChildItem "$Dir\*.txt" -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -Encoding UTF8 })
     $Notes.Conflicts = @($lines | Where-Object { $_ -like 'CONFLICT*' } | ForEach-Object { ($_ -split "`t", 2)[1] })
     $Notes.Removed = @($lines | Where-Object { $_ -like 'REMOVED*' } | ForEach-Object { ($_ -split "`t", 2)[1] })
+    $Notes.Replaced = @($lines | Where-Object { $_ -like 'REPLACED*' } | ForEach-Object { ($_ -split "`t", 2)[1] })
     $Notes.Hold = $Hold
-    if ($lines) {
+    $Notes.Links = @($lines | Where-Object { $_ -like 'LINK*' } | ForEach-Object { ($_ -split "`t", 2)[1] })
+    if ($lines -and -not $Preview) {
         New-Item -ItemType Directory -Path $Hold -Force | Out-Null
         $lines | Sort-Object | Set-Content "$Hold\list.txt" -Encoding UTF8
     }
-    Write-Note "$($Notes.Conflicts.Count) files changed on both PCs (this PC's version stays), $($Notes.Removed.Count) gone on the old PC"
+    Write-Note "$($Notes.Replaced.Count) files stood here already (old PC's version wins), $($Notes.Conflicts.Count) changed on both PCs (this PC's version stays), $($Notes.Removed.Count) gone on the old PC"
 }
 
 function Invoke-Import {
@@ -357,7 +359,9 @@ function Invoke-Import {
     }
     Write-Step "Copy the store from the old PC to $Store"
     Send-Event STEP 'store start'
-    $rc = Invoke-LinkCopy @('\\link\hopover-store', $Store, '/E', '/XD', 'logs', 'tool', '/XF', 'state-*.json', 'firewall-enabled.json', 'deselected.json', '/MT:8', '/R:1', '/W:1')
+    # A preview needs the lists, not the WSL and database archives.
+    $big = @(if ($WhatIf) { '*.tar', '*.tgz' })
+    $rc = Invoke-LinkCopy (@('\\link\hopover-store', $Store, '/E', '/XD', 'logs', 'tool', '/XF', 'state-*.json', 'firewall-enabled.json', 'deselected.json') + $big + @('/MT:8', '/R:1', '/W:1'))
     if ($rc -ge 8) { Send-Event STEP 'store failed'; throw "copy of the store from the old PC failed (exit $rc)" }
     Send-Event STEP 'store done'
     $m = Read-Json "$Store\manifest.json"
@@ -378,15 +382,15 @@ function Invoke-Import {
     if (Use-Step 'apps') { $bg = Start-BackgroundApps } else { Send-Event STEP 'apps skipped' }
     Invoke-Phase 'files'    "Files from the old PC ($(@($m.Plan).Count) chunks)" {
         $stamp = Get-Date -Format yyyyMMdd-HHmmss
-        $sync = @{}
-        if ($Catchup -and -not $WhatIf) {
-            # The hold folder is outside the store: the store gets deleted, and this is the user's data.
-            $sync = @{ SyncBase = [int64]$baseline.Ticks; Hold = "C:\hopover-held\$stamp"; SyncLog = "$Store\logs\sync-$stamp" }
-            New-Item -ItemType Directory -Path $sync.SyncLog -Force | Out-Null
-        }
+        # The hold folder is outside the store: the store gets deleted, and this is the user's data.
+        # Before the first complete pass this PC holds no work yet (a restored backup, defaults of fresh installs): the old PC wins.
+        # After it, this PC's changes win. Neither way loses a file. A preview takes the same decisions and moves nothing.
+        $sync = @{ Hold = "C:\hopover-held\$stamp"; SyncLog = "$Store\logs\sync-$stamp" }
+        if ($baseline) { $sync.SyncBase = [int64]$baseline.Ticks } else { $sync.First = $true }
+        New-Item -ItemType Directory -Path $sync.SyncLog -Force | Out-Null
         $notes.CopyFailed = @(Copy-Plan $m.Plan $From $old @($m.Excludes) $Store $Speed { Test-BackgroundApps $bg } -Recopy:($Recopy -or $Catchup) -WhatIf:$WhatIf @sync)
         $notes.JunctionFailed = @(Restore-Junctions $m.Junctions $old -WhatIf:$WhatIf)
-        if ($sync.Count) { Get-SyncNotes $sync.SyncLog $sync.Hold $notes }
+        Get-SyncNotes $sync.SyncLog $sync.Hold $notes -Preview:$WhatIf
         # Not "done" while chunks failed: the next start copies only those again.
         if ($notes.CopyFailed.Count) { throw "$($notes.CopyFailed.Count) chunks did not copy completely" }
         # From here on a change on this PC is a change of the user: a catch-up protects it. Only after a complete
@@ -413,6 +417,11 @@ function Invoke-Import {
     Invoke-Phase 'databases' 'PostgreSQL'           { Import-Databases $Store -WhatIf:$WhatIf }
     Invoke-Phase 'tasks'    'Scheduled tasks (imported switched off)' { $notes.TaskFailed = @(Import-Tasks $Store $old $m.User -WhatIf:$WhatIf) }
 
+    if ($WhatIf) {
+        $bgLog = if ($bg) { $bg.Log } else { $null }
+        Write-Preview $Store $m $notes $bgLog
+        return
+    }
     $list = Write-Checklist $Store $m $notes
     $null = Invoke-Verify
     Write-Host ''

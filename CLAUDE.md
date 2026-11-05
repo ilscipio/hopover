@@ -48,6 +48,12 @@ User steps: `README.md`.
   dst changed since then + src changed = conflict (dst stays, src to `C:\hopover-held\<time>\old-pc-version`);
   local-only file with creation AND write time <= base = gone on the old PC (moves to `removed-on-old-pc`); everything
   else on this PC stays. Only complete passes move the baseline. `env-base.json` makes env three-way.
+- No baseline yet = first pass: `/FIRST /HOLD:dir`. The new PC can hold a restored Windows backup and defaults of fresh
+  installs, and their newer dates would beat the real files under /XO. So the old PC wins unless the file is the same (time and
+  size); the earlier file goes to `new-pc-before`. Same idea for env (`env-before.json`). A dst in use: `ERROR not copied`, no chunk failure.
+- Preview: `import -WhatIf` (GUI switch "Preview first") + `LinkCopy /L /PREVIEW` = the same decisions and sync log, nothing moves.
+  `Write-Preview` builds `C:\hopover-store\preview.txt` from them, the step log and the apps log. Store copy skips `*.tar`, `*.tgz`.
+  Old PC: "Save this list as text" writes `plan.txt`.
 
 ## How it works
 

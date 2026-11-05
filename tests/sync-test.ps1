@@ -25,6 +25,16 @@ Put "$src\gonedir\sub\y.txt" 'bye'
 Put "$src\excluded\skip.txt" 'never'
 Put "$src\locked.bin" 'locked'
 Put "$src\packages\real\index.js" 'real'
+Put "$src\same.txt" 'same'
+Put "$src\config.json" 'my real settings'
+Put "$src\busy.txt" 'from the old PC'
+# The new PC is not empty: a fresh default (newer than the real file), the same file, a file of its own, a file in use.
+Start-Sleep -Seconds 3
+Put "$dst\config.json" 'fresh default'
+Put "$dst\own.txt" 'only here'
+Put "$dst\busy.txt" 'held open here'
+Put "$dst\same.txt" 'same'
+(Get-Item "$dst\same.txt").LastWriteTimeUtc = (Get-Item "$src\same.txt").LastWriteTimeUtc
 New-Item -ItemType Directory -Path "$src\node_modules" -Force | Out-Null
 $null = cmd /c mklink /J "$src\node_modules\pkg" "$src\packages\real"
 $null = cmd /c mklink "$src\rel-link.txt" "keep.txt" 2>$null
@@ -43,9 +53,27 @@ $env:HOPOVER_LINK = "$($p[2]):$($p[3])"
 try {
     # An app holds this file with no sharing at all.
     $lock = [IO.File]::Open("$src\locked.bin", 'Open', 'ReadWrite', 'None')
-    $out = & $Exe --link copy '\\link\hopover-z\a' $dst /E /XD excluded /MT:4 /R:0 /W:0 | Out-String
+    # A preview first: the same decisions, and no file moves.
+    $pv = "$T\pvlog"; New-Item -ItemType Directory -Path $pv -Force | Out-Null
+    $before = @(Get-ChildItem $dst -Recurse -Force | ForEach-Object { "$($_.FullName)|$($_.Length)|$($_.LastWriteTimeUtc.Ticks)" }) -join "`n"
+    & $Exe --link copy '\\link\hopover-z\a' $dst /E /XD excluded /MT:4 /R:0 /W:0 /L /PREVIEW /FIRST "/HOLD:$hold" "/SYNCLOG:$pv" | Out-Null
+    $after = @(Get-ChildItem $dst -Recurse -Force | ForEach-Object { "$($_.FullName)|$($_.Length)|$($_.LastWriteTimeUtc.Ticks)" }) -join "`n"
+    Ok 'preview: nothing moved' ($before -eq $after -and -not (Test-Path $hold))
+    $pl = @(Get-ChildItem "$pv\*.txt" | ForEach-Object { Get-Content $_.FullName })
+    Ok 'preview: names the file it would replace' (@($pl | Where-Object { $_ -like 'REPLACED*config.json' }).Count -eq 1) "$($pl.Count) lines"
+    Ok 'preview: the same file is no replacement' (-not ($pl | Where-Object { $_ -like 'REPLACED*same.txt' }))
+    Ok 'preview: names the links' (@($pl | Where-Object { $_ -like 'LINK*pkg*' }).Count -eq 1)
+    $busy = [IO.File]::Open("$dst\busy.txt", 'Open', 'ReadWrite', 'None')
+    $out = & $Exe --link copy '\\link\hopover-z\a' $dst /E /XD excluded /MT:4 /R:0 /W:0 /FIRST "/HOLD:$hold" "/SYNCLOG:$slog" | Out-String
     $rc = $LASTEXITCODE
+    $busy.Close()
     Ok 'first pass: exit 1, no failure' ($rc -eq 1) "exit $rc"
+    $b = "$hold\new-pc-before\" + $dst.Substring(0, 1) + $dst.Substring(2)
+    Ok 'first pass: the old PC wins over a newer default' ((Read-One "$dst\config.json") -eq 'my real settings')
+    Ok 'first pass: the default is held, not lost' ((Read-One "$b\config.json") -eq 'fresh default')
+    Ok 'first pass: same file left alone' (-not (Test-Path "$b\same.txt"))
+    Ok 'first pass: a file only here stays' ((Read-One "$dst\own.txt") -eq 'only here')
+    Ok 'first pass: a file in use here does not fail the chunk' ($out -match 'in use on this PC' -and (Read-One "$dst\busy.txt") -eq 'held open here')
     Ok 'locked file: reported, chunk not failed' ($out -match 'ERROR not copied \(locked')
     Ok 'first pass: file arrived' ((Read-One "$dst\keep.txt") -eq 'keep')
     $j = Get-Item -LiteralPath "$dst\node_modules\pkg" -Force
@@ -57,8 +85,12 @@ try {
     $lock.Close()
 
     # Second run without changes: the link stays, nothing fails.
-    & $Exe --link copy '\\link\hopover-z\a' $dst /E /XD excluded /MT:4 /R:0 /W:0 | Out-Null
+    Remove-Item "$slog\*" -Force
+    & $Exe --link copy '\\link\hopover-z\a' $dst /E /XD excluded /MT:4 /R:0 /W:0 /FIRST "/HOLD:$hold" "/SYNCLOG:$slog" | Out-Null
     Ok 'second pass: exit below 8' ($LASTEXITCODE -lt 8) "exit $LASTEXITCODE"
+    Ok 'second pass: the file in use now arrives' ((Read-One "$dst\busy.txt") -eq 'from the old PC')
+    Ok 'second pass: the first run did not repeat' (@(Get-ChildItem "$b\config.json*").Count -eq 1)
+    Remove-Item "$slog\*" -Force
 
     Start-Sleep -Seconds 3
     $base = (Get-Date).ToUniversalTime().Ticks
@@ -83,6 +115,10 @@ try {
     # What the old PC's scan leaves out stays too.
     Put "$dst\excluded\here.txt" 'stays'
 
+    $pv2 = "$T\pvlog2"; New-Item -ItemType Directory -Path $pv2 -Force | Out-Null
+    & $Exe --link copy '\\link\hopover-z\a' $dst /E /XD excluded /MT:4 /R:0 /W:0 /L /PREVIEW "/SYNC:$base" "/HOLD:$hold" "/SYNCLOG:$pv2" | Out-Null
+    $pl = @(Get-ChildItem "$pv2\*.txt" | ForEach-Object { Get-Content $_.FullName })
+    Ok 'catch-up preview: clash and removals listed, nothing moved' (@($pl | Where-Object { $_ -like 'CONFLICT*both.txt' }).Count -eq 1 -and @($pl | Where-Object { $_ -like 'REMOVED*' }).Count -ge 3 -and (Test-Path "$dst\gone.txt") -and (Test-Path "$dst\gonedir\sub\x.txt")) "$($pl.Count) lines"
     & $Exe --link copy '\\link\hopover-z\a' $dst /E /XD excluded /MT:4 /R:0 /W:0 "/SYNC:$base" "/HOLD:$hold" "/SYNCLOG:$slog" | Out-Null
     Ok 'catch-up: exit below 8' ($LASTEXITCODE -lt 8) "exit $LASTEXITCODE"
     Ok 'changed on old only: updates' ((Read-One "$dst\changed-old.txt") -eq 'v2-old')

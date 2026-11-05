@@ -62,7 +62,7 @@
   "_programs": "Installed programs that no package source has move as a folder, with their uninstall entry and machine registry key. programData brings their licences and data.",
   "programData": ["Microsoft\\Windows\\Start Menu\\Programs", "Blackmagic Design", "Steinberg", "eLicenser", "Syncrosoft", "TechSmith", "Autodesk", "Affinity", "Embarcadero", "pp"],
   "programPathSkip": "\\\\(Steam|steamapps|Microsoft[^\\\\]*|Common Files|Windows[^\\\\]*|Epic Games|GOG Galaxy|Origin Games|Ubisoft|NVIDIA[^\\\\]*|AMD|Realtek|Internet Explorer|Uninstall Information|Reference Assemblies|MSBuild)(\\\\|$)",
-  "extraPaths": ["C:\\Users\\Public\\Documents"],
+  "extraPaths": ["C:\\Users\\Public\\Documents", "C:\\Users\\Public\\Desktop"],
 
   "_appSearchSkip": "Names (regex) that are no software to move: drivers, Windows parts, the things Windows brings along.",
   "appSearchSkip": "Driver|Chipset|^NVIDIA|^AMD|^Realtek|^Genesys|^Silicon Lab|^Control Center|^Microsoft |^Windows |Local Experience|Video Extension|Image Extension|^Ink\\.|^KYOCERA|vs_|Visual C\\+\\+|^GamingCenter|^Sound Blaster|^OneDrive$|^Paint$|^Snipping Tool$|^XBOX$|^Get Help$|^Mobile Plans$|^MSN Weather$|^Solitaire|^Start Experiences|^Store Experience|^Power Automate$|^OfficePush|^Mixed Reality|^Blackmagic RAW|^WinAppRuntime|^Widgets Platform|^Xbox |^Game Bar|^Game Speech|^Films & TV$|^Mail and Calendar$|^Phone Link$|^Feedback Hub$|^Dev Home$|^Quick Assist$|^Mobile devices$|^Local AI Manager|^Web Media Extensions$|^Notepad\\+\\+$|^Python$|^Ruby$|^WinRAR$|^Rockstar Games Social Club|^Steinberg Download Assistant",
@@ -94,6 +94,7 @@
     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings",
     "HKCU\\Software\\Microsoft\\Windows\\DWM",
+    "HKCU\\Software\\Microsoft\\Windows\\Shell\\Bags\\1\\Desktop",
     "HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Fonts",
     "HKCU\\Software\\Microsoft\\Windows Script Host",
     "HKCU\\Software\\Microsoft\\Input\\Settings",
@@ -171,7 +172,7 @@
   "priorityApps": ["AgileBits.1Password", "DominikReichl.KeePass", "Microsoft.OneDrive", "Seafile.Seadrive", "Git.Git", "Microsoft.PowerShell", "Microsoft.WindowsTerminal"],
 
   "_appSkip": "winget ids that make no sense on another PC, or that wait for a click.",
-  "appSkip": ["Microsoft.WindowsInstallationAssistant", "Microsoft.WindowsPCHealthCheck", "Microsoft.AppInstaller"],
+  "appSkip": ["Microsoft.WindowsInstallationAssistant", "Microsoft.WindowsPCHealthCheck", "Microsoft.AppInstaller", "Canonical.Ubuntu.2204", "Debian.Debian"],
 
   "chocoSkip": "^(chocolatey|KB\\d|vcredist|golang$|imagemagick|pandoc$)",
 

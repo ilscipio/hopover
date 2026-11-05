@@ -63,6 +63,8 @@ function Write-Checklist([string]$Store, $Manifest, [hashtable]$Notes) {
     foreach ($f in @(Read-Json "$Store\settings\failed.json" | Where-Object { $_ })) { $L.Add("- [ ] Registry import failed: $f") }
     $L.Add('- [ ] Docker images come back with `docker-compose up` or a pull. Hopover moves named volumes, not the Docker disk (a running disk cannot be copied).')
     $L.Add('- [ ] Steam games: Steam > Settings > Storage shows them if you kept the steamapps line in the list. Epic, GOG, EA and Ubisoft download again.')
+    $wslMap = Read-Json "$Store\wsl\imported.json"
+    if ($wslMap) { foreach ($p in $wslMap.PSObject.Properties | Where-Object { $_.Name -ne $_.Value }) { $L.Add("- [ ] WSL: a distro $($p.Name) stood here already and stays. Yours is $($p.Value), the default now.") } }
     foreach ($v in @(Read-Json "$Store\docker\kept.json" | Where-Object { $_ })) { $L.Add("- [ ] Docker volume $v changed on this PC and stays. The old PC's newer data: ``$Store\docker\$v.tgz``.") }
     foreach ($p in @(Get-ChildItem "$Store\postgres\*.applied" -ErrorAction SilentlyContinue)) { $L.Add("- [ ] PostgreSQL $($p.BaseName): this PC's data stays. The old PC's latest data: ``$Store\postgres\$($p.BaseName).tgz``.") }
     $L.Add('')
@@ -81,6 +83,10 @@ function Write-Checklist([string]$Store, $Manifest, [hashtable]$Notes) {
         foreach ($c in Get-Content "$Store\certs\not-exported.txt" -ErrorAction SilentlyContinue) { $L.Add("- [ ] Certificate: $c") }
         $busy = @(Get-Content "$Store\logs\robocopy-errors.log" -ErrorAction SilentlyContinue | Where-Object { $_ -like 'ERROR not copied*' })
         if ($busy) { $L.Add("- [ ] $($busy.Count) files were locked or kept changing on the old PC (list: ``logs\robocopy-errors.log``). Close the apps there and catch up.") }
+        foreach ($e in @(Read-Json "$Store\env-before.json" | Where-Object { $_ })) { $L.Add("- [ ] Env var $($e.Scope) $($e.Name) stood here already: the old PC's value replaced it. The earlier value: ``env-before.json``.") }
+        if ($Notes.Hold -and $Notes.Replaced.Count) {
+            $L.Add("- [ ] $($Notes.Replaced.Count) files stood on this PC already (restored backup, fresh installs). The old PC's version replaced them. The earlier files: ``$($Notes.Hold)\new-pc-before``.")
+        }
         if ($Notes.Hold -and ($Notes.Conflicts.Count -or $Notes.Removed.Count)) {
             $L.Add("- [ ] Catch-up: $($Notes.Conflicts.Count) files changed on both PCs. This PC's version stays. The old PC's version is in ``$($Notes.Hold)\old-pc-version``.")
             $L.Add("- [ ] Catch-up: $($Notes.Removed.Count) files are gone on the old PC. They moved to ``$($Notes.Hold)\removed-on-old-pc``. The list is ``$($Notes.Hold)\list.txt``.")
@@ -97,6 +103,42 @@ function Write-Checklist([string]$Store, $Manifest, [hashtable]$Notes) {
     $path = Join-Path $Store 'CHECKLIST.md'
     $L | Set-Content $path -Encoding UTF8
     $path
+}
+
+# The preview: what a real run would do, as text to read before it starts. It changes nothing and holds no secret
+# (names of env vars and Wi-Fi networks, no values).
+function Write-Preview([string]$Store, $Manifest, [hashtable]$Notes, [string]$AppsLog) {
+    $L = New-Object System.Collections.Generic.List[string]
+    $section = {
+        param($Title, $Items, [string]$Empty = 'none')
+        $L.Add(''); $L.Add("=== $Title"); $L.Add('')
+        if (@($Items | Where-Object { $_ }).Count) { foreach ($i in $Items) { $L.Add("$i") } } else { $L.Add($Empty) }
+    }
+    $L.Add("Hopover preview: $($Manifest.Computer) -> $env:COMPUTERNAME, $(Get-Date -Format 'yyyy-MM-dd HH:mm')")
+    $L.Add('Nothing changed on either PC. The lists show the state of this moment; a real run decides again.')
+    $kind = if (Test-Path "$Store\baseline.json") { 'catch-up: changes on this PC win, a clash keeps both' } else { 'first move: the old PC wins, what stands here moves to C:\hopover-held' }
+    $L.Add("Rule for this run: $kind")
+    $L.Add('')
+    $L.Add("Files that would be replaced: $(@($Notes.Replaced).Count)")
+    $L.Add("Files changed on both PCs:    $(@($Notes.Conflicts).Count)")
+    $L.Add("Files gone on the old PC:     $(@($Notes.Removed).Count)")
+    $L.Add("Junctions and links to make:  $(@($Notes.Links).Count)")
+    & $section 'Data per folder (only what is missing or different)' @(Get-Content "$Store\preview-files.txt" -Encoding UTF8 -ErrorAction SilentlyContinue)
+    & $section 'Stands here already: the old PC replaces it, the earlier file goes to C:\hopover-held' @($Notes.Replaced | Sort-Object)
+    & $section 'Changed on both PCs: this PC keeps its version, the old version goes to C:\hopover-held' @($Notes.Conflicts | Sort-Object)
+    & $section 'Gone on the old PC: moves to C:\hopover-held' @($Notes.Removed | Sort-Object)
+    & $section 'Junctions and links' @($Notes.Links | Sort-Object)
+    & $section 'Apps' @(if ($AppsLog) { Get-Content $AppsLog -Encoding UTF8 -ErrorAction SilentlyContinue })
+    & $section 'All steps in order' @(Get-Content $script:Log -Encoding UTF8 -ErrorAction SilentlyContinue)
+    & $section 'What Hopover leaves out' @(
+        'Browser profiles (they sync after sign-in), OneDrive and SeaDrive folders (they sync after sign-in)',
+        'The Docker disk with images (a running disk cannot be copied; images come back with a pull)',
+        'Temp folders, Windows own folders, drivers, Epic, GOG, EA and Ubisoft games',
+        'Passwords that Windows does not give out: domain passwords, Microsoft sign-ins, Windows Hello')
+    $path = Join-Path $Store 'preview.txt'
+    $L | Set-Content $path -Encoding UTF8
+    Send-Event PREVIEW $path
+    Write-Host "Preview: $path" -ForegroundColor Green
 }
 
 function Invoke-Verify {
@@ -132,7 +174,12 @@ function Invoke-Verify {
     }
     foreach ($j in $m.Junctions) { if (-not (Test-Path -LiteralPath $j.Path)) { $gaps.Add("junction $($j.Path)") } }
     $have = @(Get-WslDistros)
-    foreach ($d in @(Read-Json "$Store\wsl\distros.json")) { if ($d -and $have -notcontains $d.Name) { $gaps.Add("wsl $($d.Name)") } }
+    $wslMap = Read-Json "$Store\wsl\imported.json"
+    foreach ($d in @(Read-Json "$Store\wsl\distros.json")) {
+        if (-not $d) { continue }
+        $n = if ($wslMap -and $wslMap.($d.Name)) { $wslMap.($d.Name) } else { $d.Name }
+        if ($have -notcontains $n) { $gaps.Add("wsl $n") }
+    }
     foreach ($t in @(Read-Json "$Store\tasks\tasks.json")) {
         if ($t -and -not (Get-ScheduledTask -TaskName $t.Name -TaskPath $t.Path -ErrorAction SilentlyContinue)) { $gaps.Add("task $($t.Path)$($t.Name)") }
     }

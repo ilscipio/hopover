@@ -19,6 +19,9 @@ namespace Hopover.Link
     /// Catch-up (/SYNC:ticks /HOLD:dir /SYNCLOG:dir): ticks = UTC end of the last finished pass. A file changed on both PCs
     /// stays as it is here; the old PC's version goes to HOLD\old-pc-version. A file from an earlier pass that is gone on
     /// the old PC moves to HOLD\removed-on-old-pc. A file made or changed on this PC since that pass is never touched.
+    /// First pass (/FIRST /HOLD:dir /SYNCLOG:dir): a PC restored from a backup, or with apps that installed themselves meanwhile,
+    /// has files already. Their dates mean nothing: a fresh default config would win over the real one. The old PC's version wins,
+    /// unless it is the same file; what stood here moves to HOLD\new-pc-before. Files that only exist here stay.
     /// </summary>
     public static class LinkCopy
     {
@@ -27,7 +30,7 @@ namespace Hopover.Link
         const int Depth = 3;
         static readonly long TwoSec = TimeSpan.FromSeconds(2).Ticks;
 
-        sealed class Job { public string Root, Rel, Dst; public Entry E; }
+        sealed class Job { public string Root, Rel, Dst; public Entry E; public bool Keep; }
 
         sealed class Ctx
         {
@@ -36,6 +39,8 @@ namespace Hopover.Link
             public bool Recurse, List;
             public int Retries = 1, WaitSec = 1;
             public long Base;                   // /SYNC: 0 = plain copy
+            public bool First;                  // /FIRST
+            public bool Preview;                // /PREVIEW with /L: the same decisions, the same log, nothing moves
             public string Hold, SyncLog;
             public string LinkFrom, LinkTo;     // /LINKMAP: old profile -> new profile in link targets
             public List<string> XdNames = new List<string>(), XdPaths = new List<string>(), XfPatterns = new List<string>();
@@ -113,6 +118,7 @@ namespace Hopover.Link
                 string u = a.ToUpperInvariant();
                 if (u == "/E" || u == "/S") c.Recurse = true;
                 else if (u == "/L") c.List = true;
+                else if (u == "/PREVIEW") c.Preview = true;
                 else if (u == "/XD" || u == "/XF")
                 {
                     for (; i < args.Length && !args[i].StartsWith("/"); i++)
@@ -126,6 +132,7 @@ namespace Hopover.Link
                         else c.XdNames.Add(v);
                     }
                 }
+                else if (u == "/FIRST") c.First = true;
                 else if (u.StartsWith("/SYNC:")) long.TryParse(a.Substring(6), out c.Base);
                 else if (u.StartsWith("/HOLD:")) c.Hold = a.Substring(6);
                 else if (u.StartsWith("/SYNCLOG:")) c.SyncLog = Path.Combine(a.Substring(9), System.Diagnostics.Process.GetCurrentProcess().Id + ".txt");
@@ -138,7 +145,7 @@ namespace Hopover.Link
                 else if (u.StartsWith("/R:")) int.TryParse(a.Substring(3), out c.Retries);
                 else if (u.StartsWith("/W:")) int.TryParse(a.Substring(3), out c.WaitSec);
             }
-            if (c.Hold == null) c.Base = 0;     // no place to keep what moves aside: plain copy
+            if (c.Hold == null) { c.Base = 0; c.First = false; }    // no place to keep what moves aside: plain copy
             if (pos.Count < 2) { Say(c, "ERROR usage: --link copy SRC DST [FILE...] [/E] [/XD ...] [/XF ...]"); return 16; }
             mt = Math.Max(1, Math.Min(mt, 8));
 
@@ -231,7 +238,7 @@ namespace Hopover.Link
 
         static void Walk(Ctx c, BlockingCollection<Job> queue, string root, string rel, string dstDir, List<Entry> entries)
         {
-            if (c.Base > 0 && !c.List) Sweep(c, root, rel, dstDir, entries);
+            if (c.Base > 0 && (!c.List || c.Preview)) Sweep(c, root, rel, dstDir, entries);
             foreach (var e in entries)
             {
                 string childRel = rel.Length == 0 ? e.Name : rel + "\\" + e.Name;
@@ -240,6 +247,7 @@ namespace Hopover.Link
                 {
                     if (e.IsDir && (c.XdNames.Any(p => Wild(p, e.Name)) || c.XdPaths.Contains(Canon(root, childRel)))) continue;
                     if (!e.IsDir && c.XfPatterns.Any(p => Wild(p, e.Name))) continue;
+                    if (c.Preview && !string.IsNullOrEmpty(e.Target)) SyncNote(c, "LINK\t" + childDst + " -> " + e.Target.Substring(2));
                     if (string.IsNullOrEmpty(e.Target) || c.List) Say(c, "SKIPPED link " + childDst);
                     else MakeLink(c, childDst, e);
                     continue;
@@ -359,13 +367,14 @@ namespace Hopover.Link
                     if (f is DirectoryInfo) HoldTree(c, path);
                     else if (FromOldPc(c, f)) HoldFile(c, path);
                 }
-                Directory.Delete(Lp(dir));      // only when nothing is left in it
+                if (!c.Preview) Directory.Delete(Lp(dir));      // only when nothing is left in it
             }
             catch (Exception) { }
         }
 
         static void HoldFile(Ctx c, string path)
         {
+            if (c.Preview) { SyncNote(c, "REMOVED\t" + path); return; }
             try
             {
                 string to = HoldPath(c, "removed-on-old-pc", path);
@@ -423,7 +432,18 @@ namespace Hopover.Link
         static void CopyFile(Ctx c, Job j)
         {
             bool force = false;
-            if (c.Base > 0 && !c.List && !SyncDecide(c, j, out force)) return;
+            if (c.Base > 0 && (!c.List || c.Preview) && !SyncDecide(c, j, out force)) return;
+            if (c.First && (!c.List || c.Preview))
+            {
+                var fi = new FileInfo(Lp(j.Dst));
+                if (fi.Exists)
+                {
+                    if (Math.Abs(fi.LastWriteTimeUtc.Ticks - j.E.MTime) <= TwoSec && fi.Length == j.E.Size) return;   // the same file: a resume
+                    force = true;
+                    j.Keep = true;
+                    if (c.Preview) SyncNote(c, "REPLACED\t" + j.Dst);
+                }
+            }
             if (!force && !NeedsCopy(j.Dst, j.E)) return;
             if (c.List)
             {
@@ -439,6 +459,13 @@ namespace Hopover.Link
                     // A live PC: temp files vanish, some files stay locked, some keep changing. They must not fail
                     // the chunk for ever (and hold the whole step). The log lists them; a catch-up tries them again.
                     if (IsGone(e)) { DropPart(j); return; }
+                    // A program here holds the file open. Only this file stays behind, not the whole chunk.
+                    if (e is IOException && !(e is LinkException) && ((e.HResult & 0xFFFF) == 32 || (e.HResult & 0xFFFF) == 33))
+                    {
+                        DropPart(j);
+                        Say(c, "ERROR not copied (in use on this PC): " + j.Dst);
+                        return;
+                    }
                     bool busy = e is LinkException && e.Message == "locked";
                     bool moving = e is IOException && e.Message.StartsWith("the source file changed");
                     if (busy || (moving && attempt >= c.Retries))
@@ -452,6 +479,16 @@ namespace Hopover.Link
                     Thread.Sleep(Math.Max(0, c.WaitSec) * 1000);
                 }
             }
+        }
+
+        /// <summary>First pass: the file that stood here moves aside before the old PC's version takes its name.</summary>
+        static void HoldBefore(Ctx c, string path)
+        {
+            string to = HoldPath(c, "new-pc-before", path);
+            Directory.CreateDirectory(Lp(Path.GetDirectoryName(to)));
+            for (int n = 1; File.Exists(Lp(to)); n++) to = HoldPath(c, "new-pc-before", path) + "." + n;
+            File.Move(Lp(path), Lp(to));
+            SyncNote(c, "REPLACED\t" + path);
         }
 
         static void DropPart(Job j)
@@ -569,8 +606,12 @@ namespace Hopover.Link
             try { File.SetLastWriteTimeUtc(lpPart, new DateTime(e.MTime, DateTimeKind.Utc)); } catch (Exception) { }
             if (File.Exists(lpDst))
             {
-                File.SetAttributes(lpDst, FileAttributes.Normal);
-                File.Delete(lpDst);
+                if (j.Keep) HoldBefore(c, j.Dst);
+                else
+                {
+                    File.SetAttributes(lpDst, FileAttributes.Normal);
+                    File.Delete(lpDst);
+                }
             }
             File.Move(lpPart, lpDst);
             var keep = (FileAttributes)e.Attrs & (FileAttributes.ReadOnly | FileAttributes.Hidden | FileAttributes.System | FileAttributes.Archive);
