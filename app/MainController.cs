@@ -117,6 +117,8 @@ namespace Hopover.App
             Click("BtnImport", StartImport);
             Click("BtnCatchupNow", StartCatchup);
             Click("BtnCatchup", StartCatchup);
+            Click("BtnSignIn", StartSignIn);
+            Click("BtnDoneSignIn", StartSignIn);
             Click("BtnCleanup", AskCleanup);
             Click("BtnDoneCleanup", AskCleanup);
             Click("BtnPreviewOpen", () => OpenFile(Path.Combine(Store, "preview.txt")));
@@ -714,6 +716,61 @@ namespace Hopover.App
                               : "A file in " + Store + " is in use. Close the other programs and try again.", "OK", null, null);
             };
             engine.Start(engineDir, new[] { "cleanup", "-Purge", "-Store", Store });
+        }
+
+        // ---------- sign-ins ----------
+        // Sign-ins can't move: Windows ties them to the old PC. This walks through them, one approval each.
+        // Password managers first: every other sign-in needs what is in them.
+        List<(string Title, string Text, Action Open)> SignInSteps()
+        {
+            var steps = new List<(string, string, Action)>();
+            Action<string, string, string> app = (name, title, text) =>
+            {
+                string link = FindLaunch(name);
+                if (link != null) steps.Add((title, text, () => OpenFile(link)));
+            };
+            app("1Password", "1Password", "Sign in with your account mail, password and Secret Key. Do this first: the other sign-ins need your passwords.");
+            app("KeePass", "KeePass", "Open your database and check the key file. Your databases came with the move.");
+            foreach (var a in Json.List(Json.Read(Path.Combine(Store, @"system\accounts.json"))))
+            {
+                string mail = Json.Str(a, "Email");
+                if (string.IsNullOrEmpty(mail)) continue;
+                // One address can stand for both a personal and a work account.
+                bool work = Json.Str(a, "Business") == "True";
+                steps.Add(((work ? "OneDrive for work: " : "OneDrive personal: ") + mail,
+                           "Approve the sign-in and choose the " + (work ? "work" : "personal") + " account if it asks. " +
+                           (work ? "Skip the folder backup here." : "Then turn on backup for Desktop, Documents and Pictures in OneDrive settings."),
+                           () => OpenFile("odopen://sync?useremail=" + Uri.EscapeDataString(mail))));
+            }
+            steps.Add(("Microsoft 365", "Add your work account in Windows: Office, Outlook and Teams use it.", () => OpenFile("ms-settings:emailandaccounts")));
+            app("Google Chrome", "Chrome", "Sign in and turn on sync: bookmarks, passwords and extensions come back.");
+            app("Firefox", "Firefox", "Sign in to sync. Your profile came with the move.");
+            app("Docker Desktop", "Docker Desktop", "Start it once and sign in. Then catch up, so that the Docker volumes arrive.");
+            app("JetBrains Toolbox", "JetBrains Toolbox", "Sign in: your IDE licences come with the account.");
+            steps.Add(("Windows Hello", "Set up your face, fingerprint or PIN. This one belongs to this PC.", () => OpenFile("ms-settings:signinoptions")));
+            return steps;
+        }
+
+        void StartSignIn()
+        {
+            startLinks = null;      // apps installed since the first look
+            SignInStep(SignInSteps(), 0);
+        }
+
+        void SignInStep(List<(string Title, string Text, Action Open)> steps, int i)
+        {
+            if (i >= steps.Count)
+            {
+                ShowDialog("All done", "You went through every sign-in. Sign out of Windows once, so that the taskbar and theme apply.", "OK", null, null);
+                return;
+            }
+            var s = steps[i];
+            ShowDialog((i + 1) + " of " + steps.Count + ":  " + s.Title, s.Text, "Open", "Skip", () =>
+            {
+                s.Open();
+                // The next step waits until this one is done.
+                ShowDialog("Done with " + s.Title + "?", "Finish it in its own window, then come back here.", "Next", null, () => SignInStep(steps, i + 1));
+            }, () => SignInStep(steps, i + 1));
         }
 
         void AskCleanup()

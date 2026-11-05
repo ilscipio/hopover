@@ -587,6 +587,7 @@
               <WrapPanel Margin="0,22,0,0">
                 <Button x:Name="BtnPreviewOpen" Content="Open the preview" Visibility="Collapsed" Margin="0,0,10,10"/>
                 <Button x:Name="BtnReconnect" Content="Connect again" Visibility="Collapsed" Margin="0,0,10,10"/>
+                <Button x:Name="BtnSignIn" Content="Sign in to your accounts" Margin="0,0,10,10"/>
                 <Button x:Name="BtnCatchup" Content="Catch up with the old PC" Margin="0,0,10,10"/>
                 <Button x:Name="BtnChecklist" Content="Open the checklist" Margin="0,0,10,10"/>
                 <Button x:Name="BtnCleanup" Content="Clean up" Margin="0,0,10,10"/>
@@ -788,6 +789,7 @@
               <TextBlock Grid.Column="1" Text="And if you have two minutes: a review helps tremendously." Style="{StaticResource Dim}" VerticalAlignment="Center" Margin="22,0,0,0"/>
             </Grid>
             <WrapPanel Margin="0,10,0,0">
+              <Button x:Name="BtnDoneSignIn" Style="{StaticResource Ghost}" Content="Sign in to your accounts" Margin="0,0,22,0"/>
               <Button x:Name="BtnDoneCatchup" Style="{StaticResource Ghost}" Content="Catch up with the old PC" Margin="0,0,22,0"/>
               <Button x:Name="BtnDoneChecklist" Style="{StaticResource Ghost}" Content="Open the checklist" Margin="0,0,22,0"/>
               <Button x:Name="BtnDoneTasks" Style="{StaticResource Ghost}" Content="Turn on scheduled tasks" Margin="0,0,22,0"/>

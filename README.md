@@ -48,7 +48,7 @@ Nervous? Switch on **Preview first** and you get a text file of everything Hopov
 
 **On your new PC:** start Hopover, click **This is the new PC** and type the code. It waits until the old PC is ready. Click **Start the move** and go get a coffee.
 
-**When you're ready to switch:** click **Catch up with the old PC** one last time and work through the short checklist. You sign in to your browser and your password manager, sign out of Windows once so the settings apply, and that's it.
+**When you're ready to switch:** click **Catch up with the old PC** one last time, then **Sign in to your accounts**. Hopover opens each sign-in in turn, password managers first, and you just approve them. Windows ties those logins to the old PC, so no tool can move them. Sign out of Windows once so the settings apply, and that's it.
 
 You can close Hopover any time. It picks up where it stopped.
 

@@ -8,6 +8,7 @@ function Write-Checklist([string]$Store, $Manifest, [hashtable]$Notes) {
     $L.Add('Tick each line. The script did everything that is not on this list.')
     $L.Add('')
     $L.Add('## Sign in (the apps are installed)')
+    $L.Add('Click **Sign in to your accounts** in Hopover: it opens each one in this order, password managers first.')
     $L.Add('- [ ] 1Password: sign in with the account mail, password and Secret Key (Emergency Kit).')
     if ($Manifest.OnePassSsh) {
         $L.Add('- [ ] 1Password: Settings > Developer > turn on "Use the SSH agent" (the old PC used it).')

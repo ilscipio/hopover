@@ -270,6 +270,12 @@ function Export-System([string]$Store, $Config) {
     $creds = @([Hopover.Cred]::ReadAll() | Where-Object { $_.Target -notmatch $Config.credSkip })
     Write-Json @($creds) "$dir\logins.json"
     Write-Note "features: $($on.Count), saved logins: $($creds.Count)"
+    # Only the addresses: the new PC opens each sign-in with the right account filled in. Tokens stay on this PC, by design.
+    $acc = @(Get-ChildItem 'HKCU:\Software\Microsoft\OneDrive\Accounts' -ErrorAction SilentlyContinue | ForEach-Object {
+        $p = Get-ItemProperty $_.PSPath
+        if ($p.UserEmail) { [pscustomobject]@{ Email = $p.UserEmail; Business = ($_.PSChildName -like 'Business*') } }
+    })
+    Write-Json @($acc) "$dir\accounts.json"
     Export-WireGuard $dir
 }
 
