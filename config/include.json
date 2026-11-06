@@ -150,6 +150,8 @@
 
   "_registryValues": "Single values from keys that also hold PC-specific data (DPI, monitors).",
   "registryValues": {
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Start": ["ShowFrequentList", "ShowRecentList", "VisiblePlaces"],
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Lock Screen": ["SlideshowEnabled", "SlideshowDirectoryPath1", "SlideshowDirectoryPath2", "SlideshowSourceDirectoriesSet"],
     "HKCU\\Control Panel\\Desktop": ["Wallpaper", "WallpaperStyle", "TileWallpaper", "AutoColorization", "WheelScrollLines", "WheelScrollChars", "MenuShowDelay", "CursorBlinkRate", "DragFullWindows", "FontSmoothing", "FontSmoothingType"]
   },
 
@@ -195,7 +197,7 @@
   "priorityApps": ["AgileBits.1Password", "DominikReichl.KeePass", "Microsoft.OneDrive", "Seafile.Seadrive", "Git.Git", "Microsoft.PowerShell", "Microsoft.WindowsTerminal"],
 
   "_appSkip": "winget ids that make no sense on another PC, or that wait for a click.",
-  "appSkip": ["Microsoft.WindowsInstallationAssistant", "Microsoft.WindowsPCHealthCheck", "Microsoft.AppInstaller", "Canonical.Ubuntu.2204", "Debian.Debian"],
+  "appSkip": ["ElectronicArts.EADesktop", "Microsoft.WindowsInstallationAssistant", "Microsoft.WindowsPCHealthCheck", "Microsoft.AppInstaller", "Canonical.Ubuntu.2204", "Debian.Debian"],
 
   "chocoSkip": "^(chocolatey|KB\\d|vcredist|golang$|imagemagick|pandoc$)",
 

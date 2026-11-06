@@ -451,7 +451,12 @@ function Invoke-Import {
     Invoke-Phase 'docker'   'Docker named volumes'  { Import-DockerVolumes $Store -WhatIf:$WhatIf }
     Invoke-Phase 'databases' 'PostgreSQL'           { Import-Databases $Store -WhatIf:$WhatIf }
     Invoke-Phase 'tasks'    'Scheduled tasks (imported switched off)' { $notes.TaskFailed = @(Import-Tasks $Store $old $m.User -WhatIf:$WhatIf) }
-    if (-not $Catchup) { Invoke-Phase 'startup' 'Startup programs' { Import-Startup $Store -WhatIf:$WhatIf } }
+    if (-not $Catchup) {
+        Invoke-Phase 'startup' 'Startup programs and fonts' {
+            Import-Startup $Store -WhatIf:$WhatIf
+            Import-Fonts $Store -WhatIf:$WhatIf
+        }
+    }
 
     if ($WhatIf) {
         $bgLog = if ($bg) { $bg.Log } else { $null }

@@ -636,6 +636,28 @@ function Import-Startup([string]$Store, [switch]$WhatIf) {
     }
 }
 
+# Fonts the user installed sit in C:\Windows\Fonts with the system's own. The link reads that folder directly, so this also works
+# when the old PC prepared with an older Hopover. A font that exists here stays as it is.
+function Import-Fonts([string]$Store, [switch]$WhatIf) {
+    $fonts = Join-Path $env:windir 'Fonts'
+    $here = @(Get-ChildItem -LiteralPath $fonts -File -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
+    $tmp = Join-Path $Store 'fonts'
+    New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+    $copy = @('\\link\hopover-c\Windows\Fonts', $tmp, '/R:1', '/W:1') + $(if ($WhatIf) { @('/L') }) + @('/XF', '*.fon', '*.ini', '*.dat', '*.xml', '*.compositefont') + $here
+    $rc = Invoke-LinkCopy $copy
+    if ($rc -ge 8) { throw "fonts from the old PC: copy failed (exit $rc)" }
+    if ($WhatIf) { return }
+    $reg = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts'
+    $new = @(Get-ChildItem -LiteralPath $tmp -File -Include *.ttf, *.otf, *.ttc -Recurse -ErrorAction SilentlyContinue)
+    foreach ($f in $new) {
+        Copy-Item -LiteralPath $f.FullName -Destination $fonts -Force
+        $kind = if ($f.Extension -ieq '.otf') { 'OpenType' } else { 'TrueType' }
+        New-ItemProperty -LiteralPath $reg -Name "$($f.BaseName) ($kind)" -Value $f.Name -PropertyType String -Force | Out-Null
+    }
+    Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Note "fonts from the old PC: $($new.Count)"
+}
+
 function Import-Settings([string]$Store, [string]$OldProfile, $Config, [switch]$ChangedOnly, [switch]$WhatIf) {
     $dir = Join-Path $Store 'settings'
     # A catch-up takes only what changed on the old PC: this PC's own settings stay otherwise.
