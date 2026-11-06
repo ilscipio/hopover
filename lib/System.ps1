@@ -204,7 +204,7 @@ function Import-Apps([string]$Store, $Config, [switch]$WhatIf) {
     Write-Json $w $json
     # Line by line into the log: the progress bars of winget would fill the memory of a runspace.
     $cur = @{ Id = $null; Name = '' }
-    $rc = Invoke-Watched 'winget' (@('import', '-i', "`"$json`"", '--ignore-unavailable', '--ignore-versions') + @($flags[0..1])) { param($line)
+    $rc = Invoke-Watched 'winget' (@('import', '-i', "`"$json`"", '--ignore-unavailable', '--ignore-versions', '--no-upgrade') + $flags) { param($line)
         $l = "$line".Trim()
         # Drop spinner and progress-bar lines (block characters U+2580-U+259F). ASCII only in
         # this file: PowerShell 5.1 reads a file without BOM as ANSI.
