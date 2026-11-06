@@ -277,12 +277,12 @@ function Import-Apps([string]$Store, $Config, [switch]$WhatIf) {
 # Runs a program with its output in a file and hands over each new line. Returns its exit code, or -1 when it stood still.
 # Still = no new output, no child process and no CPU time for $StallMinutes. winget once sat like this for 5 hours,
 # and the WSL, Docker and database steps waited behind it. A long download uses CPU, and an installer is a child process.
-function Invoke-Watched([string]$Exe, [string[]]$ArgList, [scriptblock]$OnLine, [double]$StallMinutes = 15) {
+function Invoke-Watched([string]$Exe, [string[]]$ArgList, [scriptblock]$OnLine, [double]$StallMinutes = 15, [double]$ChildMinutes = 45) {
     $out = Join-Path $env:TEMP "hopover-watched-$PID-$([guid]::NewGuid().ToString('N')).txt"
     $quoted = @($ArgList | ForEach-Object { if ("$_" -match '\s' -and "$_" -notmatch '^"') { "`"$_`"" } else { "$_" } })
     $p = Start-Process $Exe -ArgumentList $quoted -RedirectStandardOutput $out -RedirectStandardError "$out.err" -PassThru -WindowStyle Hidden
     $null = $p.Handle   # keeps the exit code readable after the process ends
-    $seen = 0; $cpu = 0.0; $last = Get-Date; $stood = $false
+    $seen = 0; $cpu = 0.0; $kidCpu = 0.0; $tick = 0; $last = Get-Date; $stood = $false; $limit = $StallMinutes
     while (-not $p.HasExited) {
         Start-Sleep -Seconds 2
         $lines = @(Get-Content -LiteralPath $out -Encoding UTF8 -ErrorAction SilentlyContinue)
@@ -291,12 +291,23 @@ function Invoke-Watched([string]$Exe, [string[]]$ArgList, [scriptblock]$OnLine, 
         if ($p.HasExited) { break }
         $now = $p.TotalProcessorTime.TotalSeconds
         if ($now - $cpu -ge 1) { $cpu = $now; $last = Get-Date }
-        # conhost belongs to the hidden console and does not count.
-        if (Get-CimInstance Win32_Process -Filter "ParentProcessId=$($p.Id) AND Name<>'conhost.exe'" -ErrorAction SilentlyContinue) { $last = Get-Date }
-        if (((Get-Date) - $last).TotalMinutes -ge $StallMinutes) {
-            Write-Warn "$Exe stood still for $StallMinutes minutes: Hopover stops it and goes on."
+        # A child that only sits there is no sign of life: the EA installer sat like that with no window. It gets the longer limit
+        # ($ChildMinutes), because an MSI child waits while the Windows Installer service does the work. conhost is the hidden console.
+        $tick++
+        if ($tick % 15 -eq 0) {
+            $all = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+            $tree = @($p.Id)
+            for ($d = 0; $d -lt 4; $d++) { $tree = @($tree + @($all | Where-Object { $tree -contains $_.ParentProcessId -and $_.Name -ne 'conhost.exe' } | ForEach-Object { [int]$_.ProcessId }) | Sort-Object -Unique) }
+            $kids = @($all | Where-Object { $tree -contains $_.ProcessId -and $_.ProcessId -ne $p.Id })
+            $use = [double](($kids | ForEach-Object { [double]$_.KernelModeTime + [double]$_.UserModeTime } | Measure-Object -Sum).Sum) / 1e7
+            if ($use - $kidCpu -ge 1) { $kidCpu = $use; $last = Get-Date }
+            $limit = if ($kids) { $ChildMinutes } else { $StallMinutes }
+        }
+        if (((Get-Date) - $last).TotalMinutes -ge $limit) {
+            Write-Warn "$Exe stood still for $limit minutes: Hopover stops it and goes on."
             $stood = $true
-            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            # With its children: the installer must not stay behind.
+            & taskkill.exe /PID $p.Id /T /F 2>$null | Out-Null
             break
         }
     }
