@@ -108,6 +108,33 @@ function Import-VsConfig([string]$Store) {
     }
 }
 
+# Puts the installer where winget looks for its own finished download: Temp\WinGet\<id>.<version>\<sha256>. winget then checks
+# the hash and runs it with the package's silent switches, so a plain web request stands in for the blocked download.
+function Get-WingetInstaller([string]$Id) {
+    $info = New-Object System.Collections.Generic.List[string]
+    $rc = Invoke-Watched 'winget' @('show', '--id', $Id, '-e', '--accept-source-agreements', '--disable-interactivity') { param($l) $info.Add("$l") }
+    $url = @($info | ForEach-Object { if ($_ -match '(?i)installer.?url:\s*(https?://\S+)') { $Matches[1] } })[0]
+    $sha = @($info | ForEach-Object { if ($_ -match '(?i)sha256:\s*([0-9a-f]{64})') { $Matches[1].ToLower() } })[0]
+    $ver = @($info | ForEach-Object { if ($_ -match '^\s*Version:\s*(\S+)') { $Matches[1] } })[0]
+    if ($rc -ne 0 -or -not $url -or -not $sha -or -not $ver) { Write-Warn "no installer data for $Id"; return $false }
+    $dir = Join-Path $env:TEMP "WinGet\$Id.$ver"
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    $file = Join-Path $dir $sha
+    Write-Note "  winget got a 403: direct download of $url"
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = 'Tls12'
+        $old = $ProgressPreference; $ProgressPreference = 'SilentlyContinue'    # the progress bar makes the download many times slower
+        Invoke-WebRequest $url -OutFile $file -UseBasicParsing
+        $ProgressPreference = $old
+    } catch { Write-Warn "download of $Id failed: $($_.Exception.Message)"; return $false }
+    if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLower() -ne $sha) {
+        Remove-Item -LiteralPath $file -ErrorAction SilentlyContinue
+        Write-Warn "download of $Id has the wrong hash"
+        return $false
+    }
+    $true
+}
+
 function Install-WingetId([string]$Id, [string[]]$Flags) {
     # Not $lines: the callback runs inside Invoke-Watched and would see its variable of that name.
     $kept = New-Object System.Collections.Generic.List[string]
@@ -119,6 +146,8 @@ function Install-WingetId([string]$Id, [string[]]$Flags) {
         Write-Note "  it needs an install location: $env:ProgramFiles\$leaf"
         $rc = Invoke-Watched 'winget' (@('install', '--id', $Id, '-e', '--location', "$env:ProgramFiles\$leaf") + $Flags) $note
     }
+    # 0x80190193: the vendor answers 403 to winget (EnterpriseDB does this for PostgreSQL).
+    if ($rc -eq -2145844845 -and (Get-WingetInstaller $Id)) { $rc = Invoke-Watched 'winget' (@('install', '--id', $Id, '-e') + $Flags) $note }
     $kept | Select-Object -Last 3 | ForEach-Object { Write-Note "  $_" }
     # 0x8A15002B: no newer version, 0x8A150061: already installed.
     $ok = $rc -eq 0 -or $rc -eq -1978335189 -or $rc -eq -1978335135
