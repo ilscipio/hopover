@@ -368,6 +368,7 @@ function Copy-Plan($Plan, [string]$From, [string]$OldProfile, [string[]]$Exclude
     $pool.Start()
 
     $state = @{ DoneBytes = $skipped; DoneCopied = [int64]0; Failed = @(); LastSave = [DateTime]::Now; Fatal = 0; LinkLost = $false; Preview = @{} }
+    try {
     Wait-Pool $pool {
         param($j)
         Send-Event ITEM "$($j.Index) $($todo.Count) $($j.Planned) $($j.Path)"
@@ -392,13 +393,19 @@ function Copy-Plan($Plan, [string]$From, [string]$OldProfile, [string[]]$Exclude
         if (([DateTime]::Now - $state.LastSave).TotalSeconds -ge 10) { Write-Json @($done) $doneFile; $state.LastSave = [DateTime]::Now }
     } {
         # Done chunks count with their planned size; running ones with what they copied so far.
-        $now = $state.DoneBytes + [math]::Max(0, $pool.Copied - $state.DoneCopied)
+        # [int64]0: with a plain 0, PS 5.1 picks Max(int, int) and throws above 2 GB.
+        $now = $state.DoneBytes + [math]::Max([int64]0, $pool.Copied - $state.DoneCopied)
         Send-Event PROGRESS "$now $total $($pool.Copied)"
         if (-not $WhatIf -and (([DateTime]::Now - $state.LastSave).TotalSeconds -ge 10)) { Write-Json @($done) $doneFile; $state.LastSave = [DateTime]::Now }
         $e = $null
         while ($pool.Errors.TryDequeue([ref]$e)) { Add-Content -Path $log -Value $e -Encoding UTF8 }
         # Not named OnTick: inside Wait-Pool that name is this very block.
         if ($Heartbeat) { & $Heartbeat }
+    }
+    } finally {
+        # An error in here must not leave the pool copying behind the later steps, and the chunks done so far stay done.
+        $pool.Cancel()
+        if (-not $WhatIf) { Write-Json @($done) $doneFile }
     }
     if ($WhatIf) {
         # Per folder: what the copy would bring. Written to a file: the output of this function is the failed list.
