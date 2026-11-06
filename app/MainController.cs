@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -115,6 +116,12 @@ namespace Hopover.App
             Click("BtnStopShare", StopSharing);
             Click("BtnConnect", () => _ = Connect());
             Click("BtnReconnect", () => { ShowPage("PageConnect", "New PC"); F<TextBox>("CodeBox").Focus(); });
+            F<ItemsControl>("AppList").ItemsSource = appChoices;
+            Click("BtnChooseApps", () => { var p = F<UIElement>("AppsPanel"); p.Visibility = p.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible; });
+            Click("BtnAppsAll", () => TickShownApps(true));
+            Click("BtnAppsNone", () => TickShownApps(false));
+            CollectionViewSource.GetDefaultView(appChoices).Filter = o => ((ChoiceRow)o).Name.IndexOf(F<TextBox>("AppSearch").Text, StringComparison.OrdinalIgnoreCase) >= 0;
+            F<TextBox>("AppSearch").TextChanged += (s, e) => CollectionViewSource.GetDefaultView(appChoices).Refresh();
             Click("BtnRestart", () => ShowDialog("Restart this PC", "Save your work in other programs first. Windows restarts in a few seconds.", "Restart", "Not yet", () =>
             {
                 try { Process.Start(new ProcessStartInfo("shutdown.exe", "/r /t 5") { UseShellExecute = false, CreateNoWindow = true }); }
@@ -840,7 +847,47 @@ namespace Hopover.App
         }
 
         // ---------- NEW PC ----------
-        sealed class PreparedData { public object Manifest, Apps, Tasks; public bool Certs; }
+        sealed class PreparedData { public object Manifest, Apps, Tasks, Extra, UserScope, Choco, Unmatched; public bool Certs; }
+
+        // ---------- which apps install on this PC ----------
+        readonly ObservableCollection<ChoiceRow> appChoices = new ObservableCollection<ChoiceRow>();
+        static string AppSkipFile => Path.Combine(Store, "apps", "skip.json");
+
+        void FillAppChoices(PreparedData got)
+        {
+            var skip = new HashSet<string>(Json.List(Json.Read(AppSkipFile)).Select(x => x.ToString()), StringComparer.OrdinalIgnoreCase);
+            var rows = new List<ChoiceRow>();
+            var ids = Json.List(Json.Get(got.Apps, "Sources")).SelectMany(s => Json.List(Json.Get(s, "Packages"))).Select(p => Json.Str(p, "PackageIdentifier"))
+                .Concat(Json.List(got.Extra).Select(x => x.ToString())).Concat(Json.List(got.UserScope).Select(x => x.ToString()));
+            rows.AddRange(ids.Select(id => new ChoiceRow { Key = id, Name = id, Kind = "winget" }));
+            rows.AddRange(Json.List(got.Choco).Select(p => Json.Str(p, "Id")).Select(id => new ChoiceRow { Key = "choco:" + id, Name = id, Kind = "Chocolatey" }));
+            // The same name the engine searches for: the version at the end goes.
+            rows.AddRange(Json.List(got.Unmatched).Select(x => Regex.Replace(x.ToString(), @"\s+v?\d[\w.+\-]*$", "").Trim()).Where(n => n.Length > 0)
+                .Select(n => new ChoiceRow { Key = "name:" + n, Name = n, Kind = "by name" }));
+            appChoices.Clear();
+            foreach (var r in rows.GroupBy(r => r.Key, StringComparer.OrdinalIgnoreCase).Select(g => g.First()).OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                r.On = !skip.Contains(r.Key);
+                r.PropertyChanged += (s, e) => ShowAppCount();
+                appChoices.Add(r);
+            }
+            F<UIElement>("BtnChooseApps").Visibility = appChoices.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            ShowAppCount();
+        }
+
+        void ShowAppCount() => F<Button>("BtnChooseApps").Content = "Choose apps (" + appChoices.Count(r => r.On) + " of " + appChoices.Count + ")";
+
+        void TickShownApps(bool on)
+        {
+            foreach (ChoiceRow r in CollectionViewSource.GetDefaultView(appChoices)) r.On = on;
+        }
+
+        void SaveAppChoices()
+        {
+            if (appChoices.Count == 0) return;
+            Directory.CreateDirectory(Path.GetDirectoryName(AppSkipFile));
+            File.WriteAllText(AppSkipFile, new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(appChoices.Where(r => !r.On).Select(r => r.Key).ToList()));
+        }
 
         string LinkRendezvous()
         {
@@ -918,7 +965,11 @@ namespace Hopover.App
                 Func<string, object> read = rel => { try { return Json.Parse(mux.ReadAllBytes("store", rel)); } catch (Exception) { return null; } };
                 bool certs = false;
                 try { certs = mux.List("store", "certs").Any(e => e.Name.EndsWith(".pfx", StringComparison.OrdinalIgnoreCase)); } catch (Exception) { }
-                return new PreparedData { Manifest = read("manifest.json"), Apps = read(@"apps\winget.json"), Tasks = read(@"tasks\tasks.json"), Certs = certs };
+                return new PreparedData
+                {
+                    Manifest = read("manifest.json"), Apps = read(@"apps\winget.json"), Tasks = read(@"tasks\tasks.json"), Certs = certs,
+                    Extra = read(@"apps\extra.json"), UserScope = read(@"apps\user-scope.json"), Choco = read(@"apps\choco.json"), Unmatched = read(@"apps\unmatched.json"),
+                };
             };
             var got = await Task.Run(load);
             // The old PC opens the link before it scans. Stay connected until it has finished preparing.
@@ -963,6 +1014,7 @@ namespace Hopover.App
             newSwitches.Clear();
             foreach (var kv in BuildSwitches("NewSteps", ImportSteps.Select(s => s.Key), done)) newSwitches[kv.Key] = kv.Value;
             F<UIElement>("NewCertPanel").Visibility = got.Certs ? Visibility.Visible : Visibility.Collapsed;
+            FillAppChoices(got);
             var card = F<FrameworkElement>("ImportCard");
             card.Visibility = Visibility.Visible;
             Fade(card, 180);
@@ -994,6 +1046,7 @@ namespace Hopover.App
                 ShowDialog("Certificate password", "Type the certificate password from the old PC, or switch the certificates off.", "OK", null, null);
                 return;
             }
+            SaveAppChoices();
             var args = new List<string> { "import", "-From", from, "-Store", Store, "-Only", string.Join(",", steps), "-Speed", Speed };
             previewRun = F<CheckBox>("DrySwitch").IsChecked == true;
             if (previewRun) args.Add("-WhatIf");
@@ -1605,6 +1658,12 @@ namespace Hopover.App
                     F<TextBlock>("SummaryTitle").Text = "MADPPIPER-2022  ·  pp";
                     F<TextBlock>("SummaryText").Text = "312 apps  ·  697 GB in 486 chunks  ·  15 scheduled tasks  ·  WSL: Ubuntu-22.04";
                     F<UIElement>("ImportCard").Visibility = Visibility.Visible;
+                    appChoices.Clear();
+                    foreach (var a in new[] { "7zip.7zip", "Blizzard.BattleNet", "Docker.DockerDesktop", "Git.Git", "VideoLAN.VLC" }) appChoices.Add(new ChoiceRow { Key = a, Name = a, Kind = "winget", On = a != "Blizzard.BattleNet" });
+                    appChoices.Add(new ChoiceRow { Key = "name:Spotify", Name = "Spotify", Kind = "by name" });
+                    F<UIElement>("BtnChooseApps").Visibility = Visibility.Visible;
+                    F<UIElement>("AppsPanel").Visibility = Visibility.Visible;
+                    ShowAppCount();
                     ShowPage("PageConnect", "New PC");
                     break;
                 case "import":

@@ -94,6 +94,16 @@ namespace Hopover.App
     }
 
     /// <summary>One finished app install, from the engine event "##APP id|name".</summary>
+    /// <summary>One line of "Choose apps" on the new PC. Key: the winget id, "choco:id" or "name:text"; the engine reads the unticked keys.</summary>
+    public class ChoiceRow : Bindable
+    {
+        bool on = true;
+        public string Key { get; set; }
+        public string Name { get; set; }
+        public string Kind { get; set; }
+        public bool On { get => on; set => Set(ref on, value); }
+    }
+
     public class AppRow
     {
         public string Id { get; set; }

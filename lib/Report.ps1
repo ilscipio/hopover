@@ -160,9 +160,10 @@ function Invoke-Verify {
     winget export -o $tmp --accept-source-agreements 2>&1 | Out-Null
     $now = @((Read-Json $tmp).Sources.Packages.PackageIdentifier)
     $was = @((Read-Json "$Store\apps\winget.json").Sources.Packages.PackageIdentifier)
-    foreach ($id in $was | Where-Object { $now -notcontains $_ -and $Config.appSkip -notcontains $_ }) { $gaps.Add("app $id") }
+    $skip = Get-AppSkip $Store
+    foreach ($id in $was | Where-Object { $now -notcontains $_ -and $Config.appSkip -notcontains $_ -and $skip -notcontains $_ }) { $gaps.Add("app $id") }
     $choco = Join-Path $env:ProgramData 'chocolatey\bin\choco.exe'
-    $wanted = @(Read-Json "$Store\apps\choco.json" | Where-Object { $_ })
+    $wanted = @(Read-Json "$Store\apps\choco.json" | Where-Object { $_ -and $skip -notcontains "choco:$($_.Id)" })
     $has = @(if ($wanted -and (Test-Path $choco)) { & $choco list --limit-output 2>$null | ForEach-Object { ("$_" -split '\|')[0] } })
     foreach ($p in $wanted | Where-Object { $has -notcontains $_.Id }) { $gaps.Add("choco $($p.Id)") }
 

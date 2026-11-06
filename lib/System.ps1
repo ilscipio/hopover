@@ -54,7 +54,8 @@ function Export-Apps([string]$Store, $Config) {
 }
 
 function Import-Choco([string]$Store, [string[]]$Flags) {
-    $pk = @(Read-Json (Join-Path $Store 'apps\choco.json') | Where-Object { $_ })
+    $skip = Get-AppSkip $Store
+    $pk = @(Read-Json (Join-Path $Store 'apps\choco.json') | Where-Object { $_ -and $skip -notcontains "choco:$($_.Id)" })
     if (-not $pk) { return @() }
     $choco = Join-Path $env:ProgramData 'chocolatey\bin\choco.exe'
     if (-not (Test-Path $choco)) {
@@ -83,9 +84,10 @@ function Import-AppsByName([string]$Store, $Config, [string[]]$Flags) {
     $tried = @(Read-Json $triedFile | Where-Object { $_ })
     $map = @($Config.appMap.PSObject.Properties | ForEach-Object { $_.Name })
     $missing = @()
+    $skip = Get-AppSkip $Store
     foreach ($raw in @(Read-Json (Join-Path $Store 'apps\unmatched.json') | Where-Object { $_ })) {
         $name = ($raw -replace '\s+v?\d[\w.+\-]*$', '').Trim()
-        if (-not $name -or $name -match $Config.appSearchSkip) { continue }
+        if (-not $name -or $name -match $Config.appSearchSkip -or $skip -contains "name:$name") { continue }
         if ($copied | Where-Object { $raw.StartsWith($_, [StringComparison]::OrdinalIgnoreCase) }) { continue }
         if ($map | Where-Object { $name -match $_ }) { continue }
         if ($tried -contains $name) { $missing += $name; continue }
@@ -107,6 +109,9 @@ function Import-VsConfig([string]$Store) {
         Start-Process $vs -ArgumentList @('modify', '--installPath', "`"$($m.Path)`"", '--config', "`"$Store\apps\$($m.Config)`"", '--quiet', '--norestart', '--noUpdateInstaller') -Wait -WindowStyle Hidden
     }
 }
+
+# What the user unticked under "Choose apps": winget ids, "choco:<id>" and "name:<text>".
+function Get-AppSkip([string]$Store) { @(Read-Json (Join-Path $Store 'apps\skip.json') | Where-Object { $_ }) }
 
 # Puts the installer where winget looks for its own finished download: Temp\WinGet\<id>.<version>\<sha256>. winget then checks
 # the hash and runs it with the package's silent switches, so a plain web request stands in for the blocked download.
@@ -172,6 +177,8 @@ function Import-Base([string]$Store, $Config, [switch]$WhatIf) {
     $flags = @('--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity')
     $ids = @(@((Read-Json (Join-Path $Store 'apps\winget.json')).Sources | ForEach-Object { $_.Packages.PackageIdentifier }) +
              @(Read-Json (Join-Path $Store 'apps\extra.json')) | Where-Object { $_ } | Sort-Object -Unique)
+    $skip = Get-AppSkip $Store
+    $ids = @($ids | Where-Object { $skip -notcontains $_ })
     # User-scope packages stay with Import-Apps: it installs them for this user only, like on the old PC.
     $userScope = @(Read-Json (Join-Path $Store 'apps\user-scope.json') | Where-Object { $_ })
     $want = New-Object System.Collections.Generic.List[string]
@@ -217,8 +224,12 @@ function Import-Apps([string]$Store, $Config, [switch]$WhatIf) {
     $flags = @('--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity')
     $userScope = @(Read-Json (Join-Path $Store 'apps\user-scope.json') | Where-Object { $_ })
     $extra = @(Read-Json (Join-Path $Store 'apps\extra.json') | Where-Object { $_ })
+    $skip = Get-AppSkip $Store
+    $userScope = @($userScope | Where-Object { $skip -notcontains $_ })
+    $extra = @($extra | Where-Object { $skip -notcontains $_ })
     if ($WhatIf) {
-        $ids = @((Read-Json $json).Sources | ForEach-Object { $_.Packages.PackageIdentifier } | Where-Object { $Config.appSkip -notcontains $_ })
+        Write-Note "unticked under Choose apps: $($skip -join ', ')"
+        $ids = @((Read-Json $json).Sources | ForEach-Object { $_.Packages.PackageIdentifier } | Where-Object { $Config.appSkip -notcontains $_ -and $skip -notcontains $_ })
         Write-Note "winget, first: $(@($Config.priorityApps) -join ', ')"
         Write-Note "winget, by id: $(@($userScope + $extra + $ids | Sort-Object -Unique) -join ', ')"
         Write-Note "not installed (appSkip): $(@($Config.appSkip) -join ', ')"
@@ -231,6 +242,7 @@ function Import-Apps([string]$Store, $Config, [switch]$WhatIf) {
     $failed = @()
     # Password managers and sync clients first, so sign-in can start while the rest installs.
     foreach ($id in $Config.priorityApps) {
+        if ($skip -contains $id) { continue }
         Write-Note "install $id"
         if (-not (Install-WingetId $id $flags)) { $failed += $id }
     }
@@ -249,7 +261,7 @@ function Import-Apps([string]$Store, $Config, [switch]$WhatIf) {
     $doneIds = @($Config.priorityApps) + $userScope + $extra
     foreach ($s in (Read-Json $json).Sources) {
         foreach ($id in @($s.Packages | ForEach-Object { $_.PackageIdentifier })) {
-            if (-not $id -or $doneIds -contains $id -or $Config.appSkip -contains $id) { continue }
+            if (-not $id -or $doneIds -contains $id -or $Config.appSkip -contains $id -or $skip -contains $id) { continue }
             Write-Note "install $id"
             if (-not (Install-WingetId $id ($flags + '--source', $s.SourceDetails.Name, '--no-upgrade'))) { $failed += $id }
         }

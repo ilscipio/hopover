@@ -93,6 +93,7 @@ User steps: `README.md`.
 - Events (stdout lines starting with `##`): `STEP <phase> start|done|failed|skipped`,
   `SCAN done total path`, `ITEM idx count planned path`, `ITEMDONE idx planned exit`,
   `PROGRESS done total runBytes`, `STORE bytes files path` (store copy), `SHARE pc|user|ips`, `DETAIL step text` (live line under a step), `END ...`.
+- "Choose apps" on the new PC writes the unticked keys to `apps\skip.json` (winget id, `choco:id`, `name:text`); `Get-AppSkip` applies them in the installs and in verify.
 - Exit codes: 0 ok, 2 some phases failed, 3 waits for a Windows restart, 1 fatal. `state-import.json` lists done phases.
 
 ## Link (pairing code, replaces SMB; added 2026-10-30, Paul's approved design)

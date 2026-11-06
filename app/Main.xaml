@@ -540,7 +540,36 @@
                   </CheckBox>
                 </StackPanel>
               </Grid>
+              <StackPanel x:Name="AppsPanel" Visibility="Collapsed" Margin="0,20,0,0">
+                <TextBlock Text="APPS TO INSTALL" Style="{StaticResource Eyebrow}"/>
+                <TextBlock Text="Untick what you don't want on this PC. Type in the box to filter the list. Hopover doesn't remove apps that are already here." Style="{StaticResource Dim}" FontSize="13" Margin="0,4,0,0"/>
+                <Grid Margin="0,10,0,8">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBox x:Name="AppSearch" VerticalContentAlignment="Center"/>
+                  <Button x:Name="BtnAppsAll" Grid.Column="1" Style="{StaticResource Ghost}" Content="Tick all" Margin="12,0,0,0"/>
+                  <Button x:Name="BtnAppsNone" Grid.Column="2" Style="{StaticResource Ghost}" Content="Untick all" Margin="12,0,0,0"/>
+                </Grid>
+                <Border BorderBrush="{StaticResource Ink}" BorderThickness="1.5" Height="300">
+                  <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+                    <ItemsControl x:Name="AppList" Margin="10,6" Focusable="False">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <CheckBox IsChecked="{Binding On, Mode=TwoWay}" Margin="0,2">
+                            <StackPanel Orientation="Horizontal">
+                              <TextBlock Text="{Binding Name}"/>
+                              <TextBlock Text="{Binding Kind}" Style="{StaticResource Dim}" FontSize="12" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                          </CheckBox>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </ScrollViewer>
+                </Border>
+              </StackPanel>
               <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0">
+                <Button x:Name="BtnChooseApps" Content="Choose apps" Visibility="Collapsed" MinWidth="200" Margin="0,0,12,0"/>
                 <Button x:Name="BtnCatchupNow" Content="Catch up" Visibility="Collapsed" MinWidth="160" Margin="0,0,12,0"/>
                 <Button x:Name="BtnImport" Style="{StaticResource Primary}" Content="Start the move" MinWidth="320"/>
               </StackPanel>
