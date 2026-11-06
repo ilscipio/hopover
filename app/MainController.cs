@@ -958,7 +958,8 @@ namespace Hopover.App
             F<TextBlock>("SummaryText").Text = appCount + " apps  ·  " + Fmt.Size(bytes) + " in " + plan.Count + " chunks  ·  " +
                                                taskCount + " scheduled tasks" + (distros.Count > 0 ? "  ·  WSL: " + string.Join(", ", distros) : "");
             var state = Json.Read(Path.Combine(Store, "state-import.json"));
-            var done = Json.List(Json.Get(state, "Done")).Select(x => x.ToString()).Where(x => x != "files").ToList();
+            // Files, apps and first installs always run: they skip what is there, and a step list that hides them left 60 apps out.
+            var done = Json.List(Json.Get(state, "Done")).Select(x => x.ToString()).Where(x => x != "files" && x != "apps" && x != "base").ToList();
             newSwitches.Clear();
             foreach (var kv in BuildSwitches("NewSteps", ImportSteps.Select(s => s.Key), done)) newSwitches[kv.Key] = kv.Value;
             F<UIElement>("NewCertPanel").Visibility = got.Certs ? Visibility.Visible : Visibility.Collapsed;

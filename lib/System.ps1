@@ -148,15 +148,21 @@ function Import-Base([string]$Store, $Config, [switch]$WhatIf) {
         return
     }
     Assert-Winget
+    # After a restart, Wi-Fi comes up some seconds after the sign-in: every install failed with a name lookup error.
+    $until = (Get-Date).AddMinutes(2)
+    while (-not (Resolve-DnsName 'github.com' -ErrorAction SilentlyContinue) -and (Get-Date) -lt $until) { Start-Sleep -Seconds 3 }
     if ($needWsl -and -not (Test-WslReady)) {
         Write-Note 'wsl --install --no-distribution'
         wsl.exe --install --no-distribution 2>&1 | Out-Null
         if (-not (Test-WslReady)) { $script:RestartPending = $true }
     }
+    $failed = @()
     foreach ($id in $want) {
         Write-Note "install $id"
-        [void](Install-WingetId $id $flags)
+        if (-not (Install-WingetId $id $flags)) { $failed += $id }
     }
+    # Not "done": the next start tries them again.
+    if ($failed) { throw "Not installed: $($failed -join ', ')" }
 }
 
 # A Windows feature stays "EnablePending" until the restart, also over a new start of Hopover. WSL and Docker do not work before it.
