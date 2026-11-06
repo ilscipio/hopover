@@ -868,14 +868,10 @@ namespace Hopover.App
             foreach (var r in rows.GroupBy(r => r.Key, StringComparer.OrdinalIgnoreCase).Select(g => g.First()).OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase))
             {
                 r.On = !skip.Contains(r.Key);
-                r.PropertyChanged += (s, e) => ShowAppCount();
                 appChoices.Add(r);
             }
             F<UIElement>("BtnChooseApps").Visibility = appChoices.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-            ShowAppCount();
         }
-
-        void ShowAppCount() => F<Button>("BtnChooseApps").Content = "Choose apps (" + appChoices.Count(r => r.On) + " of " + appChoices.Count + ")";
 
         void TickShownApps(bool on)
         {
@@ -1663,7 +1659,6 @@ namespace Hopover.App
                     appChoices.Add(new ChoiceRow { Key = "name:Spotify", Name = "Spotify", Kind = "by name" });
                     F<UIElement>("BtnChooseApps").Visibility = Visibility.Visible;
                     F<UIElement>("AppsPanel").Visibility = Visibility.Visible;
-                    ShowAppCount();
                     ShowPage("PageConnect", "New PC");
                     break;
                 case "import":
