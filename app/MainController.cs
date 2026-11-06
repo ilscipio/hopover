@@ -33,6 +33,7 @@ namespace Hopover.App
         static readonly (string Key, string Label)[] ImportSteps =
         {
             ("env", "Environment variables and PATH"), ("system", "Hosts, Windows features, saved logins"),
+            ("base", "First installs: WSL, Git, Docker, runtimes"),
             ("apps", "Apps (winget, Chocolatey, Store)"), ("files", "Files and folders"),
             ("certs", "Certificates"), ("wsl", "WSL distros"), ("settings", "Windows and app settings"),
             ("docker", "Docker volumes"), ("databases", "PostgreSQL"), ("tasks", "Scheduled tasks (switched off)"),
@@ -51,7 +52,7 @@ namespace Hopover.App
             ["apps"] = "Apps (winget list, Chocolatey, Store)", ["env"] = "Environment variables", ["files"] = "Files and folders",
             ["system"] = "Hosts, Windows features, saved logins, VPN", ["databases"] = "PostgreSQL",
             ["settings"] = "Windows and app settings, Wi-Fi", ["certs"] = "Personal certificates", ["tasks"] = "Scheduled tasks",
-            ["wsl"] = "WSL distros", ["docker"] = "Docker named volumes",
+            ["wsl"] = "WSL distros", ["docker"] = "Docker named volumes", ["base"] = "First installs: WSL, Git, Docker, runtimes",
         };
 
         public readonly Window Window;
@@ -114,6 +115,11 @@ namespace Hopover.App
             Click("BtnStopShare", StopSharing);
             Click("BtnConnect", () => _ = Connect());
             Click("BtnReconnect", () => { ShowPage("PageConnect", "New PC"); F<TextBox>("CodeBox").Focus(); });
+            Click("BtnRestart", () => ShowDialog("Restart this PC", "Save your work in other programs first. Windows restarts in a few seconds.", "Restart", "Not yet", () =>
+            {
+                try { Process.Start(new ProcessStartInfo("shutdown.exe", "/r /t 5") { UseShellExecute = false, CreateNoWindow = true }); }
+                catch (Exception ex) { AppendLog("Could not restart: " + ex.Message); }
+            }));
             Click("BtnImport", StartImport);
             Click("BtnCatchupNow", StartCatchup);
             Click("BtnCatchup", StartCatchup);
@@ -1021,6 +1027,7 @@ namespace Hopover.App
             checkpointShown = false;
             needReboot = false;
             F<UIElement>("BtnReconnect").Visibility = Visibility.Collapsed;
+            F<UIElement>("BtnRestart").Visibility = Visibility.Collapsed;
             F<UIElement>("HeroHazard").Visibility = Visibility.Visible;
             F<UIElement>("HeroWait").Visibility = Visibility.Visible;
             SetRoute(0, route);
@@ -1177,12 +1184,13 @@ namespace Hopover.App
             F<UIElement>("ActivePanel").Visibility = Visibility.Collapsed;
             F<UIElement>("HeroHazard").Visibility = Visibility.Collapsed;
             F<UIElement>("HeroWait").Visibility = Visibility.Collapsed;
-            foreach (var r in importRows.Where(r => r.State == "running")) r.State = code == 0 ? "done" : "failed";
+            bool restart = code == 3;
+            foreach (var r in importRows.Where(r => r.State == "running")) r.State = code == 0 || restart ? "done" : "failed";
             if (previewRun) { ShowPreviewDone(code); return; }
             F<UIElement>("BtnPreviewOpen").Visibility = Visibility.Collapsed;
             F<Button>("BtnReconnect").Content = "Connect again";
             bool ok = code == 0;
-            F<TextBlock>("ImportTitle").Text = ok ? "Moved" : "Stopped";
+            F<TextBlock>("ImportTitle").Text = ok ? "Moved" : restart ? "Restart needed" : "Stopped";
             if (ok)
             {
                 ShowDone();
@@ -1193,16 +1201,18 @@ namespace Hopover.App
             card.Visibility = Visibility.Visible;
             Fade(card, 180);
             returnPage = "PageImport";
-            F<TextBlock>("DoneStampText").Text = code == 2 ? "SOME FAILED" : "STOPPED";
-            F<TextBlock>("DoneTitle").Text = code == 2 ? "Done, but some steps failed" : "The move stopped";
+            F<TextBlock>("DoneStampText").Text = restart ? "PAUSED" : code == 2 ? "SOME FAILED" : "STOPPED";
+            F<TextBlock>("DoneTitle").Text = restart ? "Restart this PC to go on" : code == 2 ? "Done, but some steps failed" : "The move stopped";
             F<TextBlock>("DoneText").Text =
+                restart ? "The first installs are in, and Windows needs a restart before the rest. Keep Hopover open on the old PC. After the restart, start Hopover here, connect with the code and start the move. Done steps are skipped." :
                 needReboot ? "Restart this PC: WSL needs it. Then start Hopover, connect with the code again and start the move. Done steps are skipped." :
                 linkLost ? "The link to the old PC was lost. Check that the old PC is on and shows the code, click 'Connect again' and start the move. Hopover copies only what is missing." :
                 "Just start Hopover again - it retries the failed steps and only copies what's missing. The details show what went wrong.";
             F<UIElement>("BtnReconnect").Visibility = linkLost ? Visibility.Visible : Visibility.Collapsed;
-            SetRoute(lastFrac, "STOPPED");
+            F<UIElement>("BtnRestart").Visibility = restart ? Visibility.Visible : Visibility.Collapsed;
+            SetRoute(lastFrac, restart ? "PAUSED" : "STOPPED");
             if (currentPage != "PageImport") ShowPage("PageImport", "New PC");
-            ToggleLogOpen("ImportLogBorder", "BtnImportLog");
+            if (!restart) ToggleLogOpen("ImportLogBorder", "BtnImportLog");
         }
 
         // ---------- coffee pledge ----------

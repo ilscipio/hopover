@@ -81,9 +81,10 @@ User steps: `README.md`.
   Docker named volumes; copies `HOPOVER_EXE` into the store and `OneDrive\Hopover`;
   opens a firewall rule (TCP 47800, UDP 47801, program Hopover.exe; group "Hopover") and the
   GUI starts `Hopover.exe --link serve`, which shows the pairing code. No SMB shares.
-- `import -From OLDPC -Speed gentle|balanced|full`: env, then winget in a background
-  runspace (`Start-BackgroundApps`), files (parallel chunks, largest first), certs, WSL,
-  wait for apps, then settings (after installs, or installers overwrite them), Docker, tasks.
+- `import -From OLDPC -Speed gentle|balanced|full`: store without `*.tar`/`*.tgz`, env, system (Windows features), `base` (`Import-Base`:
+  WSL, then `baseApps` from the old PC's list; `Test-RestartPending` = exit 3 and `##END import restart`, the GUI shows "Restart now",
+  the next start skips done steps), store archives, winget in a background runspace (`Start-BackgroundApps`), files (parallel chunks,
+  largest first), certs, wait for apps, WSL, then settings (after installs, or installers overwrite them), Docker, tasks.
 - Copy: `lib\Native.cs` `RoboPool` = N copy processes (`RoboJob.Exe`: robocopy for the scan, `Hopover.exe --link copy` for the move) on worker threads, CPU class
   Idle/BelowNormal and low I/O priority (NtSetInformationProcess), output parsed line by
   line (no memory growth). `files-done.json` lists finished chunks; a restart skips them
@@ -91,7 +92,7 @@ User steps: `README.md`.
 - Events (stdout lines starting with `##`): `STEP <phase> start|done|failed|skipped`,
   `SCAN done total path`, `ITEM idx count planned path`, `ITEMDONE idx planned exit`,
   `PROGRESS done total runBytes`, `STORE bytes files path` (store copy), `SHARE pc|user|ips`, `DETAIL step text` (live line under a step), `END ...`.
-- Exit codes: 0 ok, 2 some phases failed, 1 fatal. `state-import.json` lists done phases.
+- Exit codes: 0 ok, 2 some phases failed, 3 waits for a Windows restart, 1 fatal. `state-import.json` lists done phases.
 
 ## Link (pairing code, replaces SMB; added 2026-10-30, Paul's approved design)
 

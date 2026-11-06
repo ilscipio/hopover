@@ -112,6 +112,8 @@ function Install-WingetId([string]$Id, [string[]]$Flags) {
     winget install --id $Id -e @Flags 2>&1 | ForEach-Object { "$_".Trim() } | Where-Object { $_ -match 'install|error|fail|Fehler' } | Select-Object -Last 3 | ForEach-Object { Write-Note "  $_" }
     # 0x8A15002B: no newer version, 0x8A150061: already installed.
     $ok = $LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq -1978335189 -or $LASTEXITCODE -eq -1978335135
+    # 3010, 1641, 0x8A150109, 0x8A15010A: installed, but Windows must restart to finish.
+    if (@(3010, 1641, -1978334967, -1978334966) -contains $LASTEXITCODE) { $ok = $true; $script:RestartPending = $true }
     if ($ok) { Send-Event APP "$Id|" } else { Write-Warn "winget install $Id failed (exit $LASTEXITCODE)" }
     $ok
 }
@@ -124,6 +126,43 @@ function Assert-Winget {
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
         throw 'winget is missing. Update "App Installer" in the Microsoft Store, then start Hopover again.'
     }
+}
+
+# What the other installers, the files and the WSL import lean on. It runs before the big copy, so a restart costs little.
+function Import-Base([string]$Store, $Config, [switch]$WhatIf) {
+    $flags = @('--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity')
+    $ids = @(@((Read-Json (Join-Path $Store 'apps\winget.json')).Sources | ForEach-Object { $_.Packages.PackageIdentifier }) +
+             @(Read-Json (Join-Path $Store 'apps\extra.json')) | Where-Object { $_ } | Sort-Object -Unique)
+    # User-scope packages stay with Import-Apps: it installs them for this user only, like on the old PC.
+    $userScope = @(Read-Json (Join-Path $Store 'apps\user-scope.json') | Where-Object { $_ })
+    $want = New-Object System.Collections.Generic.List[string]
+    foreach ($re in @($Config.baseApps)) {
+        foreach ($id in ($ids | Where-Object { $_ -match $re })) {
+            if ($Config.appSkip -notcontains $id -and $userScope -notcontains $id -and -not $want.Contains($id)) { $want.Add($id) }
+        }
+    }
+    $distros = @(Read-Json (Join-Path $Store 'wsl\distros.json') | Where-Object { $_ })
+    $needWsl = $distros.Count -gt 0 -or $ids -contains 'Microsoft.WSL' -or $ids -contains 'Docker.DockerDesktop'
+    if ($WhatIf) {
+        Write-Note "first, with a stop if Windows needs a restart: $(@(@(if ($needWsl) { 'WSL' }) + @($want)) -join ', ')"
+        return
+    }
+    Assert-Winget
+    if ($needWsl -and -not (Test-WslReady)) {
+        Write-Note 'wsl --install --no-distribution'
+        wsl.exe --install --no-distribution 2>&1 | Out-Null
+        if (-not (Test-WslReady)) { $script:RestartPending = $true }
+    }
+    foreach ($id in $want) {
+        Write-Note "install $id"
+        [void](Install-WingetId $id $flags)
+    }
+}
+
+# A Windows feature stays "EnablePending" until the restart, also over a new start of Hopover. WSL and Docker do not work before it.
+function Test-RestartPending {
+    if ($script:RestartPending) { return $true }
+    @(Get-WindowsOptionalFeature -Online -ErrorAction SilentlyContinue | Where-Object { "$($_.State)" -eq 'EnablePending' }).Count -gt 0
 }
 
 function Import-Apps([string]$Store, $Config, [switch]$WhatIf) {
@@ -347,7 +386,7 @@ function Import-System([string]$Store, [switch]$WhatIf) {
             }
         }
         Write-Json @($absent) "$dir\features-absent.json"
-        if ($restart) { Write-Warn 'Windows features need a restart. Restart the PC when the move is done; WSL may need it first.' }
+        if ($restart) { Write-Note 'Windows features need a restart: Hopover stops for it after the first installs.' }
     }
     $have = @([Hopover.Cred]::ReadAll() | ForEach-Object { $_.Target })
     $n = 0

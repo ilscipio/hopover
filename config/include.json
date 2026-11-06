@@ -187,6 +187,8 @@
     "^FileZilla": "TimKosse.FileZilla.Client"
   },
 
+  "_baseApps": "Regexes on winget ids, in order. These install before everything else, when the old PC has them: other installers and the files lean on them.",
+  "baseApps": ["^Microsoft\\.VCRedist\\.", "^Microsoft\\.DotNet\\.(DesktopRuntime|Runtime|AspNetCore)\\.", "^Git\\.Git$", "^Python\\.", "^OpenJS\\.NodeJS", "^(Oracle\\.JDK|EclipseAdoptium\\.Temurin)\\.", "^Docker\\.DockerDesktop$"],
   "priorityApps": ["AgileBits.1Password", "DominikReichl.KeePass", "Microsoft.OneDrive", "Seafile.Seadrive", "Git.Git", "Microsoft.PowerShell", "Microsoft.WindowsTerminal"],
 
   "_appSkip": "winget ids that make no sense on another PC, or that wait for a click.",

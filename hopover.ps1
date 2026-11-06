@@ -54,6 +54,8 @@ New-Item -ItemType Directory -Path "$Store\logs" -Force | Out-Null
 if ($fresh -or $Command -in 'export', 'import') { Protect-Folder $Store }
 $script:Log = Join-Path $Store "logs\$Command-$(Get-Date -Format yyyyMMdd-HHmmss).log"
 $script:FailedPhases = @()
+$script:RestartPending = $false
+$script:RestartWait = $false
 
 function Use-Step([string]$Name) {
     if ($Only.Count -and $Only -notcontains $Name) { return $false }
@@ -377,11 +379,10 @@ function Invoke-Import {
     }
     Write-Step "Copy the store from the old PC to $Store"
     Send-Event STEP 'store start'
-    # A preview needs the lists, not the WSL and database archives.
-    $big = @(if ($WhatIf) { '*.tar', '*.tgz' })
-    $rc = Invoke-LinkCopy (@('\\link\hopover-store', $Store, '/E', '/XD', 'logs', 'tool', '/XF', 'state-*.json', 'firewall-enabled.json', 'deselected.json') + $big + @('/MT:8', '/R:1', '/W:1'))
+    # The lists first. The WSL, Docker and database archives take an hour and more: they wait until a restart for WSL is behind us.
+    $storeArgs = @('\\link\hopover-store', $Store, '/E', '/XD', 'logs', 'tool', '/XF', 'state-*.json', 'firewall-enabled.json', 'deselected.json')
+    $rc = Invoke-LinkCopy ($storeArgs + @('*.tar', '*.tgz', '/MT:8', '/R:1', '/W:1'))
     if ($rc -ge 8) { Send-Event STEP 'store failed'; throw "copy of the store from the old PC failed (exit $rc)" }
-    Send-Event STEP 'store done'
     $m = Read-Json "$Store\manifest.json"
     if (-not $m -or -not $m.Profile) { throw "$Store\manifest.json is missing or empty" }
     $old = $m.Profile
@@ -389,13 +390,29 @@ function Invoke-Import {
     if ($m.User -ne $env:USERNAME) { Write-Warn "user name changed: $($m.User) -> $env:USERNAME. Paths in configs that name $old need a check." }
     $notes = @{}
 
-    # Order: env first (installers then add to the merged PATH), apps in the background,
-    # files and WSL meanwhile; settings, Docker and tasks wait for the apps they belong to.
+    # Order: env first (installers then add to the merged PATH), Windows features, the base installs and a stop if Windows
+    # needs a restart, then the archives, apps in the background, files meanwhile; settings, Docker and tasks wait for the apps.
     Invoke-Phase 'env'      'Environment variables' { $notes.EnvConflicts = @(Import-EnvVars $Store $old -WhatIf:$WhatIf) }
     Invoke-Phase 'system'   'System: hosts, Windows features, saved logins' {
         Import-System $Store -WhatIf:$WhatIf
         if (-not $WhatIf) { Import-UserUninstall $Store $old $m.Plan }
     }
+    if (-not $Catchup) {
+        Invoke-Phase 'base' 'First installs: WSL, Git, Docker, runtimes' { Import-Base $Store $Config -WhatIf:$WhatIf }
+        if (-not $WhatIf -and (Test-RestartPending)) {
+            # Nothing big has moved yet. Exit 3: the GUI asks for the restart, and the next start skips the done steps.
+            Write-Note 'Windows needs a restart before the move goes on.' 'Yellow'
+            $script:RestartWait = $true
+            return
+        }
+    }
+    # A preview needs the lists, not the archives.
+    if (-not $WhatIf) {
+        Send-Event STEP 'store start'
+        $rc = Invoke-LinkCopy ($storeArgs + @('/MT:8', '/R:1', '/W:1'))
+        if ($rc -ge 8) { Send-Event STEP 'store failed'; throw "copy of the store from the old PC failed (exit $rc)" }
+    }
+    Send-Event STEP 'store done'
     $bg = $null
     if (Use-Step 'apps') { $bg = Start-BackgroundApps } else { Send-Event STEP 'apps skipped' }
     Invoke-Phase 'files'    "Files from the old PC ($(@($m.Plan).Count) chunks)" {
@@ -424,7 +441,6 @@ function Invoke-Import {
     Wait-BackgroundApps $bg
     # The installers changed PATH (docker, git, node): this process still has the old one.
     $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
-    # WSL after the apps: winget installs Microsoft.WSL, and wsl --install beside it would collide.
     Invoke-Phase 'wsl'      'WSL distros'           { Import-Wsl $Store -WhatIf:$WhatIf }
     # After the installs: an installer would overwrite app settings imported before it.
     Invoke-Phase 'settings' 'Windows and app settings, Wi-Fi, drives, printers' {
@@ -486,6 +502,10 @@ try {
         'enable-tasks' { Assert-Admin; Write-Step 'Enable migrated tasks'; Enable-MigratedTasks $Store }
         'verify'       { $null = Invoke-Verify }
         'cleanup'      { Invoke-Cleanup }
+    }
+    if ($script:RestartWait) {
+        Send-Event END "$Command restart"
+        exit 3
     }
     if ($script:FailedPhases.Count) {
         Send-Event END "$Command partial $($script:FailedPhases -join ',')"
