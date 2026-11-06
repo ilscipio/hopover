@@ -83,7 +83,8 @@ User steps: `README.md`.
   GUI starts `Hopover.exe --link serve`, which shows the pairing code. No SMB shares.
 - `import -From OLDPC -Speed gentle|balanced|full`: store without `*.tar`/`*.tgz`, env, system (Windows features), `base` (`Import-Base`:
   WSL, then `baseApps` from the old PC's list; `Test-RestartPending` = exit 3 and `##END import restart`, the GUI shows "Restart now",
-  the next start skips done steps), store archives, winget in a background runspace (`Start-BackgroundApps`), files (parallel chunks,
+  the next start skips done steps), store archives, winget one id at a time in a background runspace (`Start-BackgroundApps`; never
+  `winget import`: one package that asks a question stops all of them; `Invoke-Watched` stops a silent winget after 15 min), files (parallel chunks,
   largest first), certs, wait for apps, WSL, then settings (after installs, or installers overwrite them), Docker, tasks.
 - Copy: `lib\Native.cs` `RoboPool` = N copy processes (`RoboJob.Exe`: robocopy for the scan, `Hopover.exe --link copy` for the move) on worker threads, CPU class
   Idle/BelowNormal and low I/O priority (NtSetInformationProcess), output parsed line by

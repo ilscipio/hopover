@@ -109,12 +109,22 @@ function Import-VsConfig([string]$Store) {
 }
 
 function Install-WingetId([string]$Id, [string[]]$Flags) {
-    winget install --id $Id -e @Flags 2>&1 | ForEach-Object { "$_".Trim() } | Where-Object { $_ -match 'install|error|fail|Fehler' } | Select-Object -Last 3 | ForEach-Object { Write-Note "  $_" }
+    # Not $lines: the callback runs inside Invoke-Watched and would see its variable of that name.
+    $kept = New-Object System.Collections.Generic.List[string]
+    $note = { param($l) $t = "$l".Trim(); if ($t -match 'install|error|fail|Fehler' -and $t -notmatch "[$([char]0x2580)-$([char]0x259F)]") { $kept.Add($t) } }
+    $rc = Invoke-Watched 'winget' (@('install', '--id', $Id, '-e') + $Flags) $note
+    # 0x8A15005F: this package wants an install location, and with no prompts nobody gives one.
+    if ($rc -eq -1978335137) {
+        $leaf = $Id.Substring($Id.LastIndexOf('.') + 1)
+        Write-Note "  it needs an install location: $env:ProgramFiles\$leaf"
+        $rc = Invoke-Watched 'winget' (@('install', '--id', $Id, '-e', '--location', "$env:ProgramFiles\$leaf") + $Flags) $note
+    }
+    $kept | Select-Object -Last 3 | ForEach-Object { Write-Note "  $_" }
     # 0x8A15002B: no newer version, 0x8A150061: already installed.
-    $ok = $LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq -1978335189 -or $LASTEXITCODE -eq -1978335135
+    $ok = $rc -eq 0 -or $rc -eq -1978335189 -or $rc -eq -1978335135
     # 3010, 1641, 0x8A150109, 0x8A15010A: installed, but Windows must restart to finish.
-    if (@(3010, 1641, -1978334967, -1978334966) -contains $LASTEXITCODE) { $ok = $true; $script:RestartPending = $true }
-    if ($ok) { Send-Event APP "$Id|" } else { Write-Warn "winget install $Id failed (exit $LASTEXITCODE)" }
+    if (@(3010, 1641, -1978334967, -1978334966) -contains $rc) { $ok = $true; $script:RestartPending = $true }
+    if ($ok) { Send-Event APP "$Id|" } else { Write-Warn "winget install $Id failed (exit $rc)" }
     $ok
 }
 
@@ -204,45 +214,32 @@ function Import-Apps([string]$Store, $Config, [switch]$WhatIf) {
         Write-Note "install $id (not in the winget export)"
         if (-not (Install-WingetId $id $flags)) { $failed += $id }
     }
-    # winget import has no per-package scope: the user-scope packages are done above, so leave them out.
-    # appSkip: packages that make no sense on another PC or wait for a click.
-    $w = Read-Json $json
-    foreach ($s in $w.Sources) { $s.Packages = @($s.Packages | Where-Object { $userScope -notcontains $_.PackageIdentifier -and $Config.appSkip -notcontains $_.PackageIdentifier }) }
-    $json = Join-Path $Store 'apps\winget-import.json'
-    Write-Json $w $json
-    # Line by line into the log: the progress bars of winget would fill the memory of a runspace.
-    $cur = @{ Id = $null; Name = '' }
-    $rc = Invoke-Watched 'winget' (@('import', '-i', "`"$json`"", '--ignore-unavailable', '--ignore-versions', '--no-upgrade') + $flags) { param($line)
-        $l = "$line".Trim()
-        # Drop spinner and progress-bar lines (block characters U+2580-U+259F). ASCII only in
-        # this file: PowerShell 5.1 reads a file without BOM as ANSI.
-        # One event per finished app for the GUI checkpoint: "##APP <id>|<name>". Matches the English and German winget text.
-        if ($l -match '\[([A-Za-z0-9][\w.+-]*\.[\w.+-]+)\]') {
-            $cur.Id = $Matches[1]
-            $cur.Name = (($l -replace '\s*\[.*$', '') -replace '^(Found|Gefunden)\s+', '').Trim()
-        } elseif ($cur.Id -and $l -match 'Successfully installed|Erfolgreich installiert|already installed|bereits installiert') {
-            Send-Event APP "$($cur.Id)|$($cur.Name)"
-            $cur.Id = $null
+    # One by one, not winget import: it checks all packages first, and one package that wants an answer
+    # (Battle.net asks for an install location) stopped all 120, or waited for hours when prompts were on.
+    # appSkip: packages that make no sense on another PC or wait for a click. User-scope packages are done above.
+    $doneIds = @($Config.priorityApps) + $userScope + $extra
+    foreach ($s in (Read-Json $json).Sources) {
+        foreach ($id in @($s.Packages | ForEach-Object { $_.PackageIdentifier })) {
+            if (-not $id -or $doneIds -contains $id -or $Config.appSkip -contains $id) { continue }
+            Write-Note "install $id"
+            if (-not (Install-WingetId $id ($flags + '--source', $s.SourceDetails.Name, '--no-upgrade'))) { $failed += $id }
         }
-        if ($l -and $l -notmatch '^[\s\-\\|/]+$|^\d+\s*%$|[\u2580-\u259F]') { Write-Note $l }
     }
-    if ($rc -gt 0 -or $rc -lt -1) { Write-Warn "winget import: some packages did not install (exit $rc). The log lists them." }
     $failed += @(Import-Choco $Store $flags)
     $notFound = @(Import-AppsByName $Store $Config $flags)
     Import-VsConfig $Store
     if ($failed) { Write-Warn "Not installed: $($failed -join ', '). Install them by hand." }
     Write-Json @($failed) (Join-Path $Store 'apps\failed.json')
     Write-Json @($notFound) (Join-Path $Store 'apps\not-found.json')
-    # Not "done": the next start tries the missing apps again.
-    if ($rc -eq -1) { throw 'winget import stood still and Hopover stopped it. Start the move again for the missing apps.' }
 }
 
 # Runs a program with its output in a file and hands over each new line. Returns its exit code, or -1 when it stood still.
-# Still = no new output, no child process and no CPU time for $StallMinutes. winget import once sat like this for 5 hours,
+# Still = no new output, no child process and no CPU time for $StallMinutes. winget once sat like this for 5 hours,
 # and the WSL, Docker and database steps waited behind it. A long download uses CPU, and an installer is a child process.
 function Invoke-Watched([string]$Exe, [string[]]$ArgList, [scriptblock]$OnLine, [double]$StallMinutes = 15) {
     $out = Join-Path $env:TEMP "hopover-watched-$PID-$([guid]::NewGuid().ToString('N')).txt"
-    $p = Start-Process $Exe -ArgumentList $ArgList -RedirectStandardOutput $out -RedirectStandardError "$out.err" -PassThru -WindowStyle Hidden
+    $quoted = @($ArgList | ForEach-Object { if ("$_" -match '\s' -and "$_" -notmatch '^"') { "`"$_`"" } else { "$_" } })
+    $p = Start-Process $Exe -ArgumentList $quoted -RedirectStandardOutput $out -RedirectStandardError "$out.err" -PassThru -WindowStyle Hidden
     $null = $p.Handle   # keeps the exit code readable after the process ends
     $seen = 0; $cpu = 0.0; $last = Get-Date; $stood = $false
     while (-not $p.HasExited) {
