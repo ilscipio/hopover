@@ -460,8 +460,11 @@ function Repair-SshAcl {
     $ssh = Join-Path $env:USERPROFILE '.ssh'
     if (-not (Test-Path $ssh)) { return }
     $me = "$env:USERDOMAIN\$env:USERNAME"
-    icacls $ssh /inheritance:r /grant:r "${me}:(OI)(CI)F" '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' /T /C /Q | Out-Null
-    if ($LASTEXITCODE -ne 0) { Write-Warn "icacls on $ssh failed ($LASTEXITCODE): ssh may refuse the keys" }
+    # The folder gets the rules, its contents inherit them. These rules with /T left every file with an empty ACL: no program could read a key.
+    icacls $ssh /inheritance:r /grant:r "${me}:(OI)(CI)F" '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' /C /Q | Out-Null
+    $rc = $LASTEXITCODE
+    icacls "$ssh\*" /reset /T /C /Q | Out-Null
+    if ($rc -ne 0 -or $LASTEXITCODE -ne 0) { Write-Warn "icacls on $ssh failed: ssh may refuse the keys" }
     else { Write-Note "Fixed .ssh permissions for $me" }
 }
 
