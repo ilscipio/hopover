@@ -528,6 +528,7 @@ function Export-Settings([string]$Store, $Config) {
     }
     if ($win.Power -match '^[0-9a-f-]{36}$') { powercfg /export "$dir\power.pow" $win.Power | Out-Null }
     Write-Json $win "$dir\windows.json"
+    Export-Startup $dir
     Write-Note "app registry keys: $($vendors.Count) ($(($vendors.PSChildName) -join ', '))"
     reg export 'HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall' "$dir\user-uninstall.reg" /y 2>$null | Out-Null
     # Machine-wide vendor keys. The import takes a key only when no installer made one here.
@@ -579,6 +580,49 @@ function Import-RegFile([string]$Path, [string]$OldProfile, [string]$Drop) {
     $ok = $LASTEXITCODE -eq 0
     Remove-Item $tmp -ErrorAction SilentlyContinue
     $ok
+}
+
+# What starts with Windows, and what the user switched off in Task Manager. "Off" lives in StartupApproved, apart from the Run keys:
+# the first byte is odd when off. Group = its list there: Run, Run32 (32-bit Run key) or StartupFolder.
+function Get-StartupItems {
+    $base = 'Software\Microsoft\Windows\CurrentVersion'
+    $wanted = @(
+        @('HKCU:', 'Run', "HKCU:\$base\Run"), @('HKLM:', 'Run', "HKLM:\$base\Run"),
+        @('HKCU:', 'Run32', "HKCU:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Run"), @('HKLM:', 'Run32', "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run")
+    )
+    $found = foreach ($w in $wanted) {
+        $i = Get-ItemProperty -LiteralPath $w[2] -ErrorAction SilentlyContinue
+        if ($i) { foreach ($p in $i.PSObject.Properties) { if ($p.Name -notmatch '^PS(Path|ParentPath|ChildName|Drive|Provider)$') { [pscustomobject]@{ Scope = $w[0]; Group = $w[1]; Name = $p.Name } } } }
+    }
+    $folders = @(@('HKCU:', "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup"), @('HKLM:', "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Startup"))
+    $files = foreach ($f in $folders) { Get-ChildItem -LiteralPath $f[1] -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'desktop.ini' } | ForEach-Object { [pscustomobject]@{ Scope = $f[0]; Group = 'StartupFolder'; Name = $_.Name } } }
+    foreach ($x in @($found) + @($files)) {
+        if (-not $x) { continue }
+        $v = (Get-ItemProperty -LiteralPath "$($x.Scope)\$base\Explorer\StartupApproved\$($x.Group)" -Name $x.Name -ErrorAction SilentlyContinue).($x.Name)
+        $x | Add-Member NoteProperty Off ([bool]($v -and ([byte[]]$v)[0] % 2 -eq 1)) -PassThru
+    }
+}
+
+function Export-Startup([string]$Dir) { Write-Json @(Get-StartupItems) "$Dir\startup.json" }
+
+# After the installs: they add their own entries and switch them on. Each entry gets the state it had on the old PC.
+# An entry the old PC did not have came with an install: it goes off, not away, so Task Manager can switch it back on.
+function Import-Startup([string]$Store, [switch]$WhatIf) {
+    $file = Join-Path $Store 'settings\startup.json'
+    if (-not (Test-Path $file)) { throw 'The old PC has no startup list yet. Prepare it again with this version of Hopover.' }
+    $old = @(Read-Json $file | Where-Object { $_ })
+    $base = 'Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved'
+    foreach ($x in @(Get-StartupItems)) {
+        $was = @($old | Where-Object { $_.Name -eq $x.Name })[0]
+        $off = if ($was) { [bool]$was.Off } else { $true }
+        if ($off -eq $x.Off) { continue }
+        Write-Note ("startup {0}: {1}{2}" -f $x.Name, $(if ($off) { 'off' } else { 'on' }), $(if ($was) { '' } else { ' (new with an install)' }))
+        if ($WhatIf) { continue }
+        $path = "$($x.Scope)\$base\$($x.Group)"
+        if (-not (Test-Path -LiteralPath $path)) { New-Item -Path $path -Force | Out-Null }
+        $bytes = [byte[]](@($(if ($off) { 3 } else { 2 })) + (,0 * 11))
+        New-ItemProperty -LiteralPath $path -Name $x.Name -Value $bytes -PropertyType Binary -Force | Out-Null
+    }
 }
 
 function Import-Settings([string]$Store, [string]$OldProfile, $Config, [switch]$ChangedOnly, [switch]$WhatIf) {

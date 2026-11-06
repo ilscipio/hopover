@@ -37,7 +37,7 @@ namespace Hopover.App
             ("base", "First installs: WSL, Git, Docker, runtimes"),
             ("apps", "Apps (winget, Chocolatey, Store)"), ("files", "Files and folders"),
             ("certs", "Certificates"), ("wsl", "WSL distros"), ("settings", "Windows and app settings"),
-            ("docker", "Docker volumes"), ("databases", "PostgreSQL"), ("tasks", "Scheduled tasks (switched off)"),
+            ("docker", "Docker volumes"), ("databases", "PostgreSQL"), ("tasks", "Scheduled tasks (switched off)"), ("startup", "Startup programs"),
         };
 
         static readonly (string Key, string Label)[] CatchupSteps =
@@ -53,7 +53,7 @@ namespace Hopover.App
             ["apps"] = "Apps (winget list, Chocolatey, Store)", ["env"] = "Environment variables", ["files"] = "Files and folders",
             ["system"] = "Hosts, Windows features, saved logins, VPN", ["databases"] = "PostgreSQL",
             ["settings"] = "Windows and app settings, Wi-Fi", ["certs"] = "Personal certificates", ["tasks"] = "Scheduled tasks",
-            ["wsl"] = "WSL distros", ["docker"] = "Docker named volumes", ["base"] = "First installs: WSL, Git, Docker, runtimes",
+            ["wsl"] = "WSL distros", ["docker"] = "Docker named volumes", ["base"] = "First installs: WSL, Git, Docker, runtimes", ["startup"] = "Startup programs: same as the old PC",
         };
 
         public readonly Window Window;
@@ -1010,7 +1010,7 @@ namespace Hopover.App
                                                taskCount + " scheduled tasks" + (distros.Count > 0 ? "  ·  WSL: " + string.Join(", ", distros) : "");
             var state = Json.Read(Path.Combine(Store, "state-import.json"));
             // Files, apps and first installs always run: they skip what is there, and a step list that hides them left 60 apps out.
-            var done = Json.List(Json.Get(state, "Done")).Select(x => x.ToString()).Where(x => x != "files" && x != "apps" && x != "base").ToList();
+            var done = Json.List(Json.Get(state, "Done")).Select(x => x.ToString()).Where(x => x != "files" && x != "apps" && x != "base" && x != "startup").ToList();
             newSwitches.Clear();
             foreach (var kv in BuildSwitches("NewSteps", ImportSteps.Select(s => s.Key), done)) newSwitches[kv.Key] = kv.Value;
             F<UIElement>("NewCertPanel").Visibility = got.Certs ? Visibility.Visible : Visibility.Collapsed;
