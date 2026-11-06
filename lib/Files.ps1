@@ -97,12 +97,14 @@ function Split-PlanItem($Item, [int]$Depth, [string[]]$ExNames, [string[]]$ExPat
         -not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -and
         -not (Test-NameExcluded $_.Name $ExNames) -and -not (Test-UnderAny $_.FullName $ExPaths)
     })
-    # More than 200 subfolders: one chunk. The "files" chunk must exclude each split subfolder
-    # by full path, and thousands of them would pass robocopy's 32k command-line limit.
-    if ($subs.Count -lt 2 -or $subs.Count -gt 200) { return $Item }
+    # Thousands of subfolders: one chunk. That many chunks help nobody.
+    if ($subs.Count -lt 2 -or $subs.Count -gt 5000) { return $Item }
     # This folder minus its split subfolders is one chunk (/E, so a subfolder made after the
-    # scan still moves); each subfolder is split further.
-    [pscustomobject]@{ Path = $Item.Path; Kind = 'files'; Why = $Item.Why; Group = $Item.Group; Skip = @($subs.FullName) }
+    # scan still moves); each subfolder is split further. Above 200 subfolders the excludes would
+    # pass robocopy's 32k command-line limit, so the chunk takes only the files in this folder.
+    # A workspace of 357 repos as one chunk showed "1866 of 1867" for hours, and a restart walked all of it again.
+    if ($subs.Count -gt 200) { [pscustomobject]@{ Path = $Item.Path; Kind = 'flat'; Why = $Item.Why; Group = $Item.Group } }
+    else { [pscustomobject]@{ Path = $Item.Path; Kind = 'files'; Why = $Item.Why; Group = $Item.Group; Skip = @($subs.FullName) } }
     foreach ($s in $subs) {
         Split-PlanItem ([pscustomobject]@{ Path = $s.FullName; Kind = 'dir'; Why = $Item.Why; Group = $Item.Group }) ($Depth - 1) $ExNames $ExPaths
     }
@@ -227,6 +229,8 @@ function New-RoboJob([int]$Index, $Item, [string]$Src, [string]$Dst, [string[]]$
         # a name alone would also drop same-named folders deeper down.
         $skip = @($Item.Skip | Where-Object { $_ } | ForEach-Object { if ($MapPath) { & $MapPath $_ } else { $_ } })
         $list = @($Src, $Dst, '/E') + $Options + $Excludes + @(if ($skip) { '/XD' } ) + $skip
+    } elseif ($Item.Kind -eq 'flat') {
+        $list = @($Src, $Dst) + $Options + $Excludes
     } else {
         $list = @($Src, $Dst, '/E') + $Options + $Excludes
     }

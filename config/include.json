@@ -201,7 +201,7 @@
   "_credSkip": "Saved logins that belong to this PC or to a Microsoft sign-in. Everything else moves.",
   "credSkip": "MicrosoftAccount|WindowsLive|XboxLive|Xbl|OneDrive|MicrosoftOffice|SSO_POP|virtualapp|msteams|^teams|^Olk/|Microsoft_OC|LegacyGeneric:target=.*teams",
 
-  "taskExclude": "S-1-5-21-|OneDrive|Zoom|NVIDIA|Adobe|SoftLanding|GoogleUserPEH|GoogleUpdate|MicrosoftEdgeUpdate|Agent Activation|StartCN|StartDVR|Snagit|RPCServiceHealthCheck|Hopover",
+  "taskExclude": "S-1-5-21-|OneDrive|Zoom|NVIDIA|Adobe|SoftLanding|GoogleUserPEH|GoogleUpdate|MicrosoftEdgeUpdate|Agent Activation|StartCN|StartDVR|Snagit|RPCServiceHealthCheck|StartRPCService|AMDInstallLauncher|AMDLinkUpdate|AMDRyzenMasterSDKTask|Hopover",
 
   "wslSkip": ["docker-desktop", "docker-desktop-data"]
 }

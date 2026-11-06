@@ -203,27 +203,63 @@ function Import-Apps([string]$Store, $Config, [switch]$WhatIf) {
     $json = Join-Path $Store 'apps\winget-import.json'
     Write-Json $w $json
     # Line by line into the log: the progress bars of winget would fill the memory of a runspace.
-    winget import -i $json --ignore-unavailable --ignore-versions @($flags[0..1]) 2>&1 | ForEach-Object {
-        $l = "$_".Trim()
+    $cur = @{ Id = $null; Name = '' }
+    $rc = Invoke-Watched 'winget' (@('import', '-i', "`"$json`"", '--ignore-unavailable', '--ignore-versions') + @($flags[0..1])) { param($line)
+        $l = "$line".Trim()
         # Drop spinner and progress-bar lines (block characters U+2580-U+259F). ASCII only in
         # this file: PowerShell 5.1 reads a file without BOM as ANSI.
         # One event per finished app for the GUI checkpoint: "##APP <id>|<name>". Matches the English and German winget text.
         if ($l -match '\[([A-Za-z0-9][\w.+-]*\.[\w.+-]+)\]') {
-            $curId = $Matches[1]
-            $curName = (($l -replace '\s*\[.*$', '') -replace '^(Found|Gefunden)\s+', '').Trim()
-        } elseif ($curId -and $l -match 'Successfully installed|Erfolgreich installiert|already installed|bereits installiert') {
-            Send-Event APP "$curId|$curName"
-            $curId = $null
+            $cur.Id = $Matches[1]
+            $cur.Name = (($l -replace '\s*\[.*$', '') -replace '^(Found|Gefunden)\s+', '').Trim()
+        } elseif ($cur.Id -and $l -match 'Successfully installed|Erfolgreich installiert|already installed|bereits installiert') {
+            Send-Event APP "$($cur.Id)|$($cur.Name)"
+            $cur.Id = $null
         }
         if ($l -and $l -notmatch '^[\s\-\\|/]+$|^\d+\s*%$|[\u2580-\u259F]') { Write-Note $l }
     }
-    if ($LASTEXITCODE -ne 0) { Write-Warn "winget import: some packages did not install (exit $LASTEXITCODE). The log lists them." }
+    if ($rc -gt 0 -or $rc -lt -1) { Write-Warn "winget import: some packages did not install (exit $rc). The log lists them." }
     $failed += @(Import-Choco $Store $flags)
     $notFound = @(Import-AppsByName $Store $Config $flags)
     Import-VsConfig $Store
     if ($failed) { Write-Warn "Not installed: $($failed -join ', '). Install them by hand." }
     Write-Json @($failed) (Join-Path $Store 'apps\failed.json')
     Write-Json @($notFound) (Join-Path $Store 'apps\not-found.json')
+    # Not "done": the next start tries the missing apps again.
+    if ($rc -eq -1) { throw 'winget import stood still and Hopover stopped it. Start the move again for the missing apps.' }
+}
+
+# Runs a program with its output in a file and hands over each new line. Returns its exit code, or -1 when it stood still.
+# Still = no new output, no child process and no CPU time for $StallMinutes. winget import once sat like this for 5 hours,
+# and the WSL, Docker and database steps waited behind it. A long download uses CPU, and an installer is a child process.
+function Invoke-Watched([string]$Exe, [string[]]$ArgList, [scriptblock]$OnLine, [double]$StallMinutes = 15) {
+    $out = Join-Path $env:TEMP "hopover-watched-$PID-$([guid]::NewGuid().ToString('N')).txt"
+    $p = Start-Process $Exe -ArgumentList $ArgList -RedirectStandardOutput $out -RedirectStandardError "$out.err" -PassThru -WindowStyle Hidden
+    $null = $p.Handle   # keeps the exit code readable after the process ends
+    $seen = 0; $cpu = 0.0; $last = Get-Date; $stood = $false
+    while (-not $p.HasExited) {
+        Start-Sleep -Seconds 2
+        $lines = @(Get-Content -LiteralPath $out -Encoding UTF8 -ErrorAction SilentlyContinue)
+        # The last line can still be growing.
+        while ($seen -lt $lines.Count - 1) { & $OnLine $lines[$seen]; $seen++; $last = Get-Date }
+        if ($p.HasExited) { break }
+        $now = $p.TotalProcessorTime.TotalSeconds
+        if ($now - $cpu -ge 1) { $cpu = $now; $last = Get-Date }
+        # conhost belongs to the hidden console and does not count.
+        if (Get-CimInstance Win32_Process -Filter "ParentProcessId=$($p.Id) AND Name<>'conhost.exe'" -ErrorAction SilentlyContinue) { $last = Get-Date }
+        if (((Get-Date) - $last).TotalMinutes -ge $StallMinutes) {
+            Write-Warn "$Exe stood still for $StallMinutes minutes: Hopover stops it and goes on."
+            $stood = $true
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            break
+        }
+    }
+    $p.WaitForExit(5000) | Out-Null
+    $lines = @(Get-Content -LiteralPath $out -Encoding UTF8 -ErrorAction SilentlyContinue)
+    while ($seen -lt $lines.Count) { & $OnLine $lines[$seen]; $seen++ }
+    Remove-Item -LiteralPath $out, "$out.err" -ErrorAction SilentlyContinue
+    if ($stood) { return -1 }
+    $p.ExitCode
 }
 
 # ---------- environment variables ----------
@@ -593,7 +629,10 @@ function Import-WindowsSettings([string]$Dir, [string]$OldProfile, [switch]$What
         if (-not $WhatIf) {
             # /import gives the plan a new GUID; read it back and make it active.
             $out = (powercfg /import "$Dir\power.pow") -join ' '
-            if ($out -match '([0-9a-f]{8}-[0-9a-f-]{27})') { powercfg /setactive $Matches[1] | Out-Null }
+            if ($out -match '([0-9a-f]{8}-[0-9a-f-]{27})') {
+                powercfg /setactive $Matches[1] | Out-Null
+                if ($LASTEXITCODE -ne 0) { Write-Warn "power plan: Windows did not make it active (exit $LASTEXITCODE)" }
+            } else { Write-Warn "power plan: import failed: $out" }
         }
     }
     # Wallpaper, mouse and keyboard values apply now; Explorer, taskbar and theme at the next sign-in.

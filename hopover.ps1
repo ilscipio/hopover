@@ -243,10 +243,11 @@ function Start-BackgroundApps {
     $log = Join-Path $Store "logs\apps-$(Get-Date -Format yyyyMMdd-HHmmss).log"
     $ps = [powershell]::Create()
     [void]$ps.AddScript({
-        param($Root, $Store, $Log, $DryRun)
+        # Not $Log: Common.ps1 clears $script:Log, and here that is the same variable.
+        param($Root, $Store, $LogFile, $DryRun)
         . "$Root\lib\Common.ps1"
         . "$Root\lib\System.ps1"
-        $script:Log = $Log
+        $script:Log = $LogFile
         Import-Apps $Store (Get-MigrationConfig $Root) -WhatIf:$DryRun
     }).AddArgument($Root).AddArgument($Store).AddArgument($log).AddArgument([bool]$WhatIf)
     Write-Step 'Apps (winget) start in the background'

@@ -25,7 +25,7 @@ User steps: `README.md`.
   server queue is FIFO (list waits behind reads).
 - Next: Paul's real move in the week of 2026-11-02 (old PC stays on). That run is the
   test. Fix what it finds here, rebuild, commit and push (`dist\Hopover.exe` is in git).
-- Selling it: decide AFTER the move (Paul, 2026-10-30). Slaide stays first in the push
+- Decided: Hopover stays free, with a strong reminder to buy Paul a coffee. Slaide stays first in the push
   order. Competitors: PCmover ~$30-50, EaseUS PCTrans ~$50, Zinstall ~$130; none of
   them claim WSL, SSH keys, env vars or dev scheduled tasks. A sale version needs a
   code-signing certificate and tests on many PC types.
