@@ -240,12 +240,39 @@ namespace Hopover.App
 
         void HideDialog() => F<UIElement>("Overlay").Visibility = Visibility.Collapsed;
 
+        // A TextBox with a long text is slow, and a move prints for hours: one update per line froze the window. The lines
+        // stay here, and the box gets the last ones once a second, only while it shows. The full log is in C:\hopover-store\logs.
+        const int LogLines = 500;
+        readonly Queue<string> exportLines = new Queue<string>(), importLines = new Queue<string>();
+        System.Windows.Threading.DispatcherTimer logTimer;
+        bool logChanged;
+
         void AppendLog(string line)
         {
-            var box = currentPage == "PageExport" ? F<TextBox>("ExportLog") : F<TextBox>("ImportLog");
-            box.AppendText(line + "\n");
-            // Keep the box light; the full log is in C:\hopover-store\logs.
-            if (box.Text.Length > 300_000) box.Text = box.Text.Substring(box.Text.Length - 150_000);
+            var q = currentPage == "PageExport" ? exportLines : importLines;
+            q.Enqueue(line);
+            while (q.Count > LogLines) q.Dequeue();
+            logChanged = true;
+            if (logTimer == null)
+            {
+                logTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+                logTimer.Tick += (s, e) => { if (logChanged) ShowLog(); };
+                logTimer.Start();
+            }
+        }
+
+        void ShowLog()
+        {
+            logChanged = false;
+            ShowLog("ExportLogBorder", "ExportLog", exportLines);
+            ShowLog("ImportLogBorder", "ImportLog", importLines);
+        }
+
+        void ShowLog(string border, string name, Queue<string> lines)
+        {
+            if (F<UIElement>(border).Visibility != Visibility.Visible) return;
+            var box = F<TextBox>(name);
+            box.Text = string.Join("\n", lines);
             box.ScrollToEnd();
         }
 
@@ -255,6 +282,7 @@ namespace Hopover.App
             bool show = b.Visibility != Visibility.Visible;
             b.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
             F<Button>(button).Content = show ? "Hide details" : "Show details";
+            if (show) ShowLog();
         }
 
         static void Copy(string text) { try { Clipboard.SetText(text ?? ""); } catch { } }

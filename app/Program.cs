@@ -15,16 +15,13 @@ using System.Windows.Media.Animation;
 [assembly: AssemblyDescription("Moves a Windows PC to a new one over the LAN")]
 [assembly: AssemblyCompany("Ilscipio")]
 [assembly: AssemblyCopyright("(c) 2026 Ilscipio")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
-[assembly: AssemblyInformationalVersion("1.0.0")]
 
 namespace Hopover.App
 {
     static class Program
     {
         public const string Store = @"C:\hopover-store";
-        static readonly string Version = "1.0.0";
+        static readonly string Version = BuildInfo.Version;
 
         [STAThread]
         static int Main(string[] args)

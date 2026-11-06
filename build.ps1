@@ -80,11 +80,20 @@ $rsp = Join-Path $Obj 'csc.rsp'
 # Paths over 260 characters work in .NET Framework only when the assembly says it targets 4.6.2 or later.
 $tfm = Join-Path $Obj 'TargetFramework.cs'
 '[assembly: System.Runtime.Versioning.TargetFramework(".NETFramework,Version=v4.8")]' | Set-Content $tfm -Encoding ASCII
+# A release gets the number of its tag (v1.0.<run>, see release.yml). A local build stays 1.0.0.
+$ver = if ($env:GITHUB_RUN_NUMBER) { "1.0.$env:GITHUB_RUN_NUMBER" } else { '1.0.0' }
+$vcs = Join-Path $Obj 'Version.cs'
+@(
+    "[assembly: System.Reflection.AssemblyVersion(`"$ver.0`")]",
+    "[assembly: System.Reflection.AssemblyFileVersion(`"$ver.0`")]",
+    "[assembly: System.Reflection.AssemblyInformationalVersion(`"$ver`")]",
+    "namespace Hopover.App { static class BuildInfo { public const string Version = `"$ver`"; } }"
+) | Set-Content $vcs -Encoding ASCII
 @(
     '/nologo', '/nostdlib+', '/target:winexe', '/platform:anycpu', '/optimize+', '/langversion:7.3',
     '/utf8output', '/warn:4', "/out:`"$out`"", "/win32icon:`"$ico`"", "/win32manifest:`"$App\app.manifest`""
 ) + ($refs | ForEach-Object { "/reference:`"$_`"" }) + ($resources | ForEach-Object { "/resource:`"$($_.Split(',')[0])`",$($_.Split(',')[1])" }) +
-  (Get-ChildItem "$App\*.cs", "$App\Link\*.cs" | ForEach-Object { "`"$($_.FullName)`"" }) + "`"$tfm`"" | Set-Content $rsp -Encoding UTF8
+  (Get-ChildItem "$App\*.cs", "$App\Link\*.cs" | ForEach-Object { "`"$($_.FullName)`"" }) + "`"$tfm`"" + "`"$vcs`"" | Set-Content $rsp -Encoding UTF8
 & $csc.FullName /noconfig "@$rsp"
 if ($LASTEXITCODE -ne 0) { throw "compile failed ($LASTEXITCODE)" }
 Write-Host ("built {0} ({1:N0} KB)" -f $out, ((Get-Item $out).Length / 1KB)) -ForegroundColor Green
