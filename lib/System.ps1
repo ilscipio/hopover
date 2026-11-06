@@ -159,7 +159,9 @@ function Import-Base([string]$Store, $Config, [switch]$WhatIf) {
     $failed = @()
     foreach ($id in $want) {
         Write-Note "install $id"
-        if (-not (Install-WingetId $id $flags)) { $failed += $id }
+        # Docker asks for its terms at the first start unless the installer accepts them.
+        $f = if ($id -eq 'Docker.DockerDesktop') { $flags + '--override', 'install --quiet --accept-license' } else { $flags }
+        if (-not (Install-WingetId $id $f)) { $failed += $id }
     }
     # Not "done": the next start tries them again.
     if ($failed) { throw "Not installed: $($failed -join ', ')" }
@@ -766,9 +768,39 @@ function Import-Wsl([string]$Store, [switch]$WhatIf) {
 }
 
 # ---------- Docker named volumes ----------
-function Assert-DockerUp([string]$Then) {
+# The engine runs elevated. A short-lived task starts a program with the user's normal rights, in the user's session.
+function Start-AsUser([string]$Exe) {
+    $name = 'Hopover start app'
+    $a = New-ScheduledTaskAction -Execute $Exe
+    $u = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
+    Register-ScheduledTask -TaskName $name -Action $a -Principal $u -Force | Out-Null
+    Start-ScheduledTask -TaskName $name
+    Start-Sleep -Seconds 3
+    Unregister-ScheduledTask -TaskName $name -Confirm:$false
+}
+
+function Test-DockerUp {
     docker info --format '{{.ServerVersion}}' *> $null
-    if ($LASTEXITCODE -ne 0) { throw "Docker Desktop does not run. Start it and wait until it is ready, then $Then" }
+    $LASTEXITCODE -eq 0
+}
+
+# Checks that Docker answers, and starts Docker Desktop if it does not. The first start after an install takes minutes.
+function Assert-DockerUp([string]$Then) {
+    if (Test-DockerUp) { return }
+    $exe = Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe'
+    if (Test-Path -LiteralPath $exe) {
+        if (-not (Get-Process 'Docker Desktop' -ErrorAction SilentlyContinue)) {
+            Write-Note 'Docker Desktop does not run: Hopover starts it'
+            Start-AsUser $exe
+        }
+        Send-Event DETAIL 'docker Waiting for Docker Desktop to start'
+        $until = (Get-Date).AddMinutes(5)
+        while ((Get-Date) -lt $until) {
+            Start-Sleep -Seconds 5
+            if (Test-DockerUp) { Write-Note 'Docker Desktop runs'; return }
+        }
+    }
+    throw "Docker Desktop did not start within 5 minutes. If it asks you to accept its terms, do that, then $Then"
 }
 
 function Export-DockerVolumes([string]$Store) {
@@ -797,6 +829,8 @@ function Import-DockerVolumes([string]$Store, [switch]$WhatIf) {
     if (-not $files) { return }
     # Throw, not return: the step stays open, and the next start of the move does it again.
     if ($WhatIf) { foreach ($f in $files) { Write-Note "docker volume $($f.BaseName) ($([int]($f.Length / 1MB)) MB)" }; return }
+    # Docker may have installed in this run: this process still has the old PATH.
+    $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw 'docker is missing: install Docker Desktop, start it once, then start the move again (only the Docker step).' }
     if (-not $WhatIf) { Assert-DockerUp 'start the move again (only the Docker step).' }
     $dir = Join-Path $Store 'docker'
