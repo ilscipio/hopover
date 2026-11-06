@@ -155,6 +155,9 @@
 
   "_registryMachineValues": "Machine switches that a developer PC needs: long paths, Developer Mode.",
   "registryMachineValues": {
+    "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System": ["ConsentPromptBehaviorAdmin", "PromptOnSecureDesktop"],
+    "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU": ["NoAutoRebootWithLoggedOnUsers"],
+    "HKLM\\SYSTEM\\CurrentControlSet\\Control\\CrashControl": ["AutoReboot"],
     "HKLM\\SYSTEM\\CurrentControlSet\\Control\\FileSystem": ["LongPathsEnabled"],
     "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Keyboard Layout": ["Scancode Map"],
     "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Sudo": ["Enabled"],
