@@ -1061,6 +1061,8 @@ namespace Hopover.App
                 return;
             }
             var args = new List<string> { "import", "-Catchup", "-From", from, "-Store", Store, "-Speed", Speed };
+            // Apps switched off means no installs here too.
+            if (newSwitches.TryGetValue("apps", out var appsSwitch) && appsSwitch.IsChecked != true) { args.Add("-Skip"); args.Add("apps"); }
             previewRun = F<CheckBox>("DrySwitch").IsChecked == true;
             if (previewRun) args.Add("-WhatIf");
             RunImport(args, CatchupSteps, null, "", "Catching up with the old PC", "PICKING UP THE LAST BOXES");
