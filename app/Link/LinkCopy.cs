@@ -17,8 +17,8 @@ namespace Hopover.Link
     /// Nothing is ever deleted except an older destination file that is replaced. No ACLs and no alternate streams.
     /// Junctions and symbolic links are made again as links, never followed.
     /// Catch-up (/SYNC:ticks /HOLD:dir /SYNCLOG:dir): ticks = UTC end of the last finished pass. A file changed on both PCs
-    /// stays as it is here; the old PC's version goes to HOLD\old-pc-version. A file from an earlier pass that is gone on
-    /// the old PC moves to HOLD\removed-on-old-pc. A file made or changed on this PC since that pass is never touched.
+    /// stays as it is here; the old PC's version goes to HOLD\old-pc-version. A file that is not on the old PC stays here and
+    /// only gets a REMOVED line in the list. A file made or changed on this PC since that pass is never touched.
     /// First pass (/FIRST /HOLD:dir /SYNCLOG:dir): a PC restored from a backup, or with apps that installed themselves meanwhile,
     /// has files already. Their dates mean nothing: a fresh default config would win over the real one. The old PC's version wins,
     /// unless it is the same file; what stood here moves to HOLD\new-pc-before. Files that only exist here stay.
@@ -367,22 +367,15 @@ namespace Hopover.Link
                     if (f is DirectoryInfo) HoldTree(c, path);
                     else if (FromOldPc(c, f)) HoldFile(c, path);
                 }
-                if (!c.Preview) Directory.Delete(Lp(dir));      // only when nothing is left in it
             }
             catch (Exception) { }
         }
 
         static void HoldFile(Ctx c, string path)
         {
-            if (c.Preview) { SyncNote(c, "REMOVED\t" + path); return; }
-            try
-            {
-                string to = HoldPath(c, "removed-on-old-pc", path);
-                Directory.CreateDirectory(Lp(Path.GetDirectoryName(to)));
-                File.Move(Lp(path), Lp(to));
-                SyncNote(c, "REMOVED\t" + path);
-            }
-            catch (Exception e) { Say(c, "SKIPPED moving " + path + " : " + e.Message.Replace('\n', ' ')); }
+            // Only a line in the list. A file here that the old PC lacks can be its own: installers and apps make files with old dates.
+            // Moving those away broke installed apps on the first real move (62,859 files).
+            SyncNote(c, "REMOVED\t" + path);
         }
 
         /// <summary>Catch-up decision before the /XO rule. True: copy now (j.Dst can be the hold folder). False: leave it.</summary>

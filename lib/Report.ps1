@@ -97,7 +97,7 @@ function Write-Checklist([string]$Store, $Manifest, [hashtable]$Notes) {
         }
         if ($Notes.Hold -and ($Notes.Conflicts.Count -or $Notes.Removed.Count)) {
             $L.Add("- [ ] Catch-up: $($Notes.Conflicts.Count) files changed on both PCs. This PC's version stays. The old PC's version is in ``$($Notes.Hold)\old-pc-version``.")
-            $L.Add("- [ ] Catch-up: $($Notes.Removed.Count) files are gone on the old PC. They moved to ``$($Notes.Hold)\removed-on-old-pc``. The list is ``$($Notes.Hold)\list.txt``.")
+            $L.Add("- [ ] Catch-up: $($Notes.Removed.Count) files here are not on the old PC. They stay here. The list is ``$($Notes.Hold)\list.txt``.")
         }
         $L.Add('')
     }
@@ -134,7 +134,7 @@ function Write-Preview([string]$Store, $Manifest, [hashtable]$Notes, [string]$Ap
     & $section 'Data per folder (only what is missing or different)' @(Get-Content "$Store\preview-files.txt" -Encoding UTF8 -ErrorAction SilentlyContinue)
     & $section 'Stands here already: the old PC replaces it, the earlier file goes to C:\hopover-held' @($Notes.Replaced | Sort-Object)
     & $section 'Changed on both PCs: this PC keeps its version, the old version goes to C:\hopover-held' @($Notes.Conflicts | Sort-Object)
-    & $section 'Gone on the old PC: moves to C:\hopover-held' @($Notes.Removed | Sort-Object)
+    & $section 'Not on the old PC: these stay here' @($Notes.Removed | Sort-Object)
     & $section 'Junctions and links' @($Notes.Links | Sort-Object)
     & $section 'Apps' @(if ($AppsLog) { Get-Content $AppsLog -Encoding UTF8 -ErrorAction SilentlyContinue })
     & $section 'All steps in order' @(Get-Content $script:Log -Encoding UTF8 -ErrorAction SilentlyContinue)

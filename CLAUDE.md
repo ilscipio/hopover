@@ -94,6 +94,7 @@ User steps: `README.md`.
   `SCAN done total path`, `ITEM idx count planned path`, `ITEMDONE idx planned exit`,
   `PROGRESS done total runBytes`, `STORE bytes files path` (store copy), `SHARE pc|user|ips`, `DETAIL step text` (live line under a step), `END ...`.
 - "Choose apps" on the new PC writes the unticked keys to `apps\skip.json` (winget id, `choco:id`, `name:text`); `Get-AppSkip` applies them in the installs and in verify.
+- Catch-up never moves a local-only file: it cannot tell a file deleted on the old PC from one that an app or install made here (2026-11-06: it moved 62,859 files of installed apps to `removed-on-old-pc`). It logs `GONE` and the file stays.
 - Exit codes: 0 ok, 2 some phases failed, 3 waits for a Windows restart, 1 fatal. `state-import.json` lists done phases.
 
 ## Link (pairing code, replaces SMB; added 2026-10-30, Paul's approved design)
