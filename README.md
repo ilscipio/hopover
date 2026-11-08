@@ -8,12 +8,14 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ilscipio/hopover/releases/latest/download/Hopover.exe"><img src="https://img.shields.io/badge/Download-Hopover.exe-ff5a1f?style=for-the-badge&logo=windows&logoColor=white" alt="Download Hopover.exe" height="44"></a>
+  <a href="https://github.com/ilscipio/hopover/releases/latest/download/Hopover.exe"><img src="https://img.shields.io/badge/Download-Hopover.exe-ff5a1f?style=for-the-badge&logo=windows&logoColor=white" alt="Download Hopover.exe" height="44"></a><br>
+  <sub>The exe isn't code-signed yet, so Windows shows "Windows protected your PC" once. Click <b>More info</b>, then <b>Run anyway</b>.<br>
+  You can check the file against the SHA-256 in the <a href="https://github.com/ilscipio/hopover/releases/latest">release notes</a>.</sub>
 </p>
 
 <p align="center">
   Or with winget: <code>winget install Ilscipio.Hopover</code><br>
-  <sub>Coming soon: the package isn't in the winget catalog yet. Until then, use the download above.</sub>
+  <sub>winget installs it without the warning. The package is in review at Microsoft and isn't in the catalog yet. Until then, use the download above.</sub>
 </p>
 
 <p align="center">
