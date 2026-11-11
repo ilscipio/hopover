@@ -74,7 +74,10 @@ namespace Hopover.App
                 t.Stop();
                 // The window itself, not its content: a margin on the content would crop the image.
                 var root = (FrameworkElement)w;
-                var bmp = new RenderTargetBitmap((int)Math.Ceiling(root.ActualWidth), (int)Math.Ceiling(root.ActualHeight), 96, 96, PixelFormats.Pbgra32);
+                // HOPOVER_SHOT_SCALE=1.5 renders at 144 dpi (1920x1200 for Store screenshots).
+                double sc;
+                if (!double.TryParse(Environment.GetEnvironmentVariable("HOPOVER_SHOT_SCALE"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out sc) || sc <= 0) sc = 1;
+                var bmp = new RenderTargetBitmap((int)Math.Ceiling(root.ActualWidth * sc), (int)Math.Ceiling(root.ActualHeight * sc), 96 * sc, 96 * sc, PixelFormats.Pbgra32);
                 var bg = new DrawingVisual();
                 using (var dc = bg.RenderOpen())
                 {
